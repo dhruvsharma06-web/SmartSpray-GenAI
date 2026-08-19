@@ -8,7 +8,8 @@ not contain images, annotations, or model weights.
 
 - **Dataset:** PlantSeg: A Large-Scale In-the-wild Dataset for Plant Disease
   Segmentation.
-- **Authoritative record:** [Zenodo record](https://doi.org/10.5281/zenodo.17719108)
+- **Authoritative record:** [Zenodo record](https://doi.org/10.5281/zenodo.17719108),
+  PlantSeg v7, archive MD5 `9358a66dff88cdd15c4fe009763c40a3`.
   and the [data descriptor](https://doi.org/10.1038/s41597-025-06513-4).
 - **License:** Creative Commons Attribution-NonCommercial 4.0 International
   (CC BY-NC 4.0), as stated by the current PlantSeg data descriptor. Preserve
@@ -28,7 +29,13 @@ only transform an authorized local copy into local Ultralytics labels.
 3. Only after GO, run `python ml/scripts/prepare_plantseg.py`.
 4. Run `python ml/scripts/validate_dataset.py` before later training work.
 
-The converter discovers the release metadata and requires metadata mappings
-from images to grayscale disease masks. Non-zero mask regions become class-0
-contours, normalized to Ultralytics polygon coordinates. This is a lesion-only
-dataset; the controlled webcam leaf foreground mask remains a separate stage.
+The converter discovers the release metadata (`Name`, `Plant`, `Disease`,
+`Label file`, and `URL`) and resolves the split image/mask directories from the
+release. Non-zero mask regions become class-0 contours, normalized to
+Ultralytics polygon coordinates. The verified release uses the exact target
+label `tomato early blight`; it contains 153 target images, 150 usable masks,
+and 143 unique source URLs. Three target image/mask dimension mismatches leave
+the target below the 300-mask gate, so it is not currently suitable as a
+standalone training baseline.
+This is a lesion-only dataset; the controlled webcam leaf foreground mask
+remains a separate stage.

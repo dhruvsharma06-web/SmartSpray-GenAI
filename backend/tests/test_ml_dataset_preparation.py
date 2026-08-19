@@ -62,3 +62,25 @@ def test_generated_dataset_passes_validator(tmp_path, monkeypatch):
     from validate_dataset import main
     monkeypatch.setattr(sys, "argv", ["validate_dataset.py", "--dataset", str(processed), "--manifests", str(manifests)])
     assert main() == 0
+
+
+def test_plantseg_release_field_names_and_split_paths_are_supported(tmp_path):
+    source = tmp_path / "plantseg"
+    (source / "images" / "train").mkdir(parents=True)
+    (source / "annotations" / "train").mkdir(parents=True)
+    image = np.full((10, 12, 3), 255, dtype=np.uint8)
+    mask = np.zeros((10, 12), dtype=np.uint8)
+    mask[2:7, 3:9] = 1
+    Image.fromarray(image).save(source / "images" / "train" / "tomato_early_blight_1.jpg")
+    Image.fromarray(mask).save(source / "annotations" / "train" / "tomato_early_blight_1.png")
+    (source / "Metadata.csv").write_text(
+        "Name,Plant,Disease,Label file,URL,Split\n"
+        "tomato_early_blight_1.jpg,Tomato,tomato early blight,tomato_early_blight_1.png,source-1,Training\n",
+        encoding="utf-8",
+    )
+
+    report = audit_source(source, target_disease="tomato early blight")
+
+    assert report["target"]["matching_images"] == 1
+    assert report["target"]["usable_masks"] == 1
+    assert report["dimension_mismatches"] == {}

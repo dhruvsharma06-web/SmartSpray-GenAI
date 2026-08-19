@@ -11,7 +11,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=Path("ml/datasets/raw/plantseg"))
     parser.add_argument("--target-host", default="tomato")
-    parser.add_argument("--target-disease", default="early blight")
+    parser.add_argument("--target-disease", default="tomato early blight")
     parser.add_argument("--minimum-usable-masks", type=int, default=MINIMUM_USABLE_MASKS)
     args = parser.parse_args()
     if not args.source.is_dir():

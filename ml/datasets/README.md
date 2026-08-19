@@ -5,6 +5,12 @@ authorized PlantSeg copy under `raw/plantseg/`; generated YOLO data is written
 under `processed/plantseg_tomato_early_blight/` and its deterministic paths are
 recorded in `manifests/`.
 
+The verified local source is PlantSeg v7 from Zenodo record 17719108. Its
+metadata uses `Name`, `Plant`, `Disease`, `Label file`, `URL`, and `Split`; the
+target disease label is `tomato early blight`. The release is CC BY-NC 4.0 and
+must not be redistributed through this repository. The verified target subset
+contains 153 images, 150 usable masks, and 3 image/mask dimension mismatches.
+
 ## Controlled webcam collection
 
 Collect approximately 100–200 locally captured samples with one tomato leaf on

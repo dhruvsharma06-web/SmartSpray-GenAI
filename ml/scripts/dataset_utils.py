@@ -23,13 +23,14 @@ from PIL import Image, UnidentifiedImageError
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 METADATA_NAMES = ("Metadata.csv", "metadata.csv", "metadata/Metadata.csv")
-IMAGE_FIELDS = ("image_path", "image", "image_name", "filename", "file_name")
-MASK_FIELDS = ("annotation_path", "annotation", "mask_path", "mask", "label_path")
+IMAGE_FIELDS = ("image_path", "image", "image_name", "filename", "file_name", "name")
+MASK_FIELDS = ("annotation_path", "annotation", "mask_path", "mask", "label_path", "label_file")
 HOST_FIELDS = ("plant_host", "host", "crop", "plant", "species")
 DISEASE_FIELDS = ("disease_type", "disease", "disease_name", "condition", "class")
 ID_FIELDS = ("image_id", "id", "image_name", "filename", "file_name")
-GROUP_FIELDS = ("source_url", "source", "original_image", "original_id", "leaf_id", "session_id")
+GROUP_FIELDS = ("source_url", "source", "url", "original_image", "original_id", "leaf_id", "session_id")
 MASK_VALUE_FIELDS = ("mask_value", "label_value", "class_id", "disease_id", "annotation_value")
+SPLIT_FIELDS = ("split", "partition", "subset")
 
 
 class DatasetSetupError(RuntimeError):
@@ -45,6 +46,7 @@ class Sample:
     disease: str
     group: str
     mask_value: int | None = None
+    split: str = ""
 
 
 def normalise(value: str | None) -> str:
@@ -82,6 +84,9 @@ def _resolve_path(source: Path, value: str, fallback_dirs: tuple[str, ...]) -> P
     for candidate in candidates:
         if candidate.is_file():
             return candidate.resolve()
+    matches = sorted(path for path in source.rglob(supplied.name) if path.is_file())
+    if len(matches) == 1:
+        return matches[0].resolve()
     return candidates[0].resolve() if candidates else None
 
 
@@ -98,15 +103,19 @@ def load_samples(source: Path) -> tuple[list[Sample], list[str]]:
     for index, row in enumerate(rows, start=2):
         image_value = _field(row, IMAGE_FIELDS)
         identifier = _field(row, ID_FIELDS) or image_value or f"metadata_row_{index}"
-        image_path = _resolve_path(source, image_value, ("images", "image"))
-        mask_path = _resolve_path(source, _field(row, MASK_FIELDS), ("annotations", "annotation", "masks", "labels"))
+        split = normalise(_field(row, SPLIT_FIELDS))
+        split_name = {"training": "train", "validation": "val", "test": "test"}.get(split, split)
+        image_dirs = (f"images/{split_name}", "images", "image") if split_name else ("images", "image")
+        mask_dirs = (f"annotations/{split_name}", "annotations", "annotation", "masks", "labels") if split_name else ("annotations", "annotation", "masks", "labels")
+        image_path = _resolve_path(source, image_value, image_dirs)
+        mask_path = _resolve_path(source, _field(row, MASK_FIELDS), mask_dirs)
         group = _field(row, GROUP_FIELDS) or identifier
         raw_mask_value = _field(row, MASK_VALUE_FIELDS)
         try:
             mask_value = int(raw_mask_value) if raw_mask_value else None
         except ValueError:
             mask_value = None
-        samples.append(Sample(identifier, image_path or source / "__missing__", mask_path, _field(row, HOST_FIELDS), _field(row, DISEASE_FIELDS), group, mask_value))
+        samples.append(Sample(identifier, image_path or source / "__missing__", mask_path, _field(row, HOST_FIELDS), _field(row, DISEASE_FIELDS), group, mask_value, split_name))
     return samples, columns
 
 
@@ -243,9 +252,12 @@ def audit_source(source: Path, target_host: str = "tomato", target_disease: str 
     malformed_masks: dict[str, str] = {}
     target_malformed_masks: dict[str, str] = {}
     usable_masks = 0
+    dimension_mismatches: dict[str, str] = {}
     annotation_count = 0
     mask_values: Counter[int] = Counter()
     for sample in samples:
+        if sample not in target:
+            continue
         if sample.mask_path and sample.mask_path.is_file():
             mask, error = inspect_mask(sample.mask_path)
             if error:
@@ -256,6 +268,12 @@ def audit_source(source: Path, target_host: str = "tomato", target_disease: str 
                 annotation_count += 1
                 mask_values.update(int(value) for value in np.unique(mask))
                 try:
+                    if sample.image_path.is_file() and image_size(sample.image_path) != (mask.shape[1], mask.shape[0]):
+                        message = "mask dimensions do not match image dimensions"
+                        dimension_mismatches[sample.identifier] = message
+                        malformed_masks[sample.identifier] = message
+                        target_malformed_masks[sample.identifier] = message
+                        continue
                     selected = lesion_mask(mask, sample.mask_value)
                 except ValueError as exc:
                     malformed_masks[sample.identifier] = str(exc)
@@ -273,7 +291,10 @@ def audit_source(source: Path, target_host: str = "tomato", target_disease: str 
         "target": {"host": target_host, "disease": target_disease, "matching_images": len(target), "usable_masks": usable_masks},
         "missing_images": sorted(missing_images), "malformed_annotations": malformed_masks,
         "target_malformed_annotations": target_malformed_masks,
+        "dimension_mismatches": dimension_mismatches,
         "duplicate_identifiers": duplicate_ids, "target_mask_values": dict(sorted(mask_values.items())),
+        "unique_source_groups": len({sample.group for sample in samples}),
+        "target_unique_source_groups": len({sample.group for sample in target}),
     }
 
 

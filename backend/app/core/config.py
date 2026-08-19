@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     # AI
     ai_model_path: str = Field(default="./data/models/best.pt")
     ai_confidence_threshold: float = Field(default=0.50)
+    ai_camera_index: int = Field(default=0, ge=0)
+    ai_device: str = Field(default="auto")
 
     # Severity thresholds
     severity_mild_max: int = Field(default=25)

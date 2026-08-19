@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import init_db
 from app.services.serial_manager import serial_manager
-from app.api.v1 import spray, devices
+from app.api.v1 import ai, spray, devices
 
 # Configure logging
 logging.basicConfig(
@@ -61,6 +61,7 @@ app.add_middleware(
 # Mount API v1 routers
 app.include_router(spray.router, prefix="/api/v1")
 app.include_router(devices.router, prefix="/api/v1")
+app.include_router(ai.router, prefix="/api/v1")
 
 
 @app.get("/")

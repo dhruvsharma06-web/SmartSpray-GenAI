@@ -39,3 +39,8 @@ the target below the 300-mask gate, so it is not currently suitable as a
 standalone training baseline.
 This is a lesion-only dataset; the controlled webcam leaf foreground mask
 remains a separate stage.
+
+For the local collection protocol, see
+[LOCAL_WEBCAM_COLLECTION_PROTOCOL.md](LOCAL_WEBCAM_COLLECTION_PROTOCOL.md).
+Validate the manifest before collection review with
+`python ml/scripts/validate_local_collection.py ml/datasets/local_webcam/metadata.csv`.

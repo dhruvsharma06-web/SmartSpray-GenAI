@@ -54,6 +54,7 @@ ml/datasets/raw/**
 ml/datasets/processed/**
 ml/datasets/manifests/*.txt
 ml/notebooks/.ipynb_checkpoints/
+ml/datasets/local_webcam/**
 !ml/datasets/README.md
 !ml/datasets/raw/
 !ml/datasets/raw/.gitkeep

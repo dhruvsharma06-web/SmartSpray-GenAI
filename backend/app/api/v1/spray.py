@@ -43,3 +43,10 @@ async def reset_emergency_stop():
     """Reset the software emergency stop."""
     result = hardware_controller.reset_emergency_stop()
     return result
+
+
+@router.get("/history")
+async def spray_history(device_id: str | None = None, limit: int = 50):
+    """Return persisted spray events without serial protocol details."""
+    limit = max(1, min(limit, 100))
+    return success_response(hardware_controller.get_history(device_id=device_id, limit=limit))

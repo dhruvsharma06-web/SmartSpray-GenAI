@@ -18,5 +18,5 @@ async def get_device_status(device_id: str):
 @router.post("/{device_id}/mode")
 async def set_device_mode(device_id: str, request: SetModeRequest):
     """Set the device operating mode (auto/assisted/manual)."""
-    result = hardware_controller.set_mode(request.mode)
+    result = hardware_controller.set_mode(request.mode, device_id=device_id)
     return result

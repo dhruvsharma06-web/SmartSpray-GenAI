@@ -25,3 +25,16 @@ class SprayEventResponse(BaseModel):
     error_message: Optional[str] = None
     started_at: str
     completed_at: Optional[str] = None
+
+
+class SprayHistoryItem(BaseModel):
+    id: int
+    device_id: str
+    mode: str
+    servo_angle: int
+    duration_ms: int
+    status: str
+    command_id: Optional[str] = None
+    error_message: Optional[str] = None
+    started_at: str
+    completed_at: Optional[str] = None

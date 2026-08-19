@@ -18,7 +18,7 @@ class SprayEvent(Base):
     servo_angle: Mapped[int] = mapped_column(Integer)
     duration_ms: Mapped[int] = mapped_column(Integer)
     estimated_volume_ml: Mapped[float | None] = mapped_column(Float, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/started/completed/failed/stopped
+    status: Mapped[str] = mapped_column(String(20), default="PENDING")
     command_id: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(200), nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

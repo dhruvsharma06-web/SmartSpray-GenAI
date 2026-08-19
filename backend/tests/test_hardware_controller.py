@@ -116,6 +116,28 @@ class TestEmergencyStop:
         ctrl.reset_emergency_stop()
         assert ctrl.is_emergency_stopped is False
 
+    def test_reset_emergency_stop_requires_esp32_confirmation(self, monkeypatch):
+        ctrl = _fresh_controller()
+        ctrl.emergency_stop()
+        monkeypatch.setattr(serial_manager, "send_command", lambda command: "ACK,ERROR,ESTOP_STILL_PRESSED")
+
+        result = ctrl.reset_emergency_stop()
+
+        assert result["success"] is False
+        assert result["error"]["code"] == "ESTOP_STILL_PRESSED"
+        assert ctrl.is_emergency_stopped is True
+
+    def test_reset_emergency_stop_reports_communication_failure(self, monkeypatch):
+        ctrl = _fresh_controller()
+        ctrl.emergency_stop()
+        monkeypatch.setattr(serial_manager, "send_command", lambda command: None)
+
+        result = ctrl.reset_emergency_stop()
+
+        assert result["success"] is False
+        assert result["error"]["code"] == "COMMUNICATION_ERROR"
+        assert ctrl.is_emergency_stopped is True
+
 
 class TestModeControl:
     """Mode setting tests."""

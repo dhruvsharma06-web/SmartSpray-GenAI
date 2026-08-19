@@ -128,6 +128,9 @@ class SerialManager:
         if command == "ESTOP":
             return "ACK,ESTOP_ACTIVATED"
 
+        if command == "RESET_ESTOP":
+            return "ACK,ESTOP_RESET"
+
         if command.startswith("SPRAY,"):
             parts = command.split(",")
             if len(parts) == 3:

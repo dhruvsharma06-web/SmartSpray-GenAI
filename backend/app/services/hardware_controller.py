@@ -11,26 +11,111 @@ import time
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
+from threading import RLock
+
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
+from app.core.database import init_sync_db, sync_engine
+from app.models.device import Device
+from app.models.spray_event import SprayEvent
 from app.services.serial_manager import serial_manager
 from app.schemas.common import error_response, success_response
+from sqlalchemy.orm import Session, sessionmaker
 
 logger = logging.getLogger(__name__)
 
 # Valid operating modes
 VALID_MODES = {"auto", "assisted", "manual"}
+EVENT_PENDING = "PENDING"
+EVENT_STARTED = "STARTED"
+EVENT_COMPLETED = "COMPLETED"
+EVENT_STOPPED = "STOPPED"
+EVENT_FAILED = "FAILED"
+
+SyncSession = sessionmaker(bind=sync_engine, expire_on_commit=False)
 
 
 class HardwareController:
     """Orchestrates command validation and ESP32 communication."""
 
     def __init__(self):
+        init_sync_db()
         self._current_mode: str = "manual"
         self._is_spraying: bool = False
         self._is_emergency_stopped: bool = False
-        self._processed_commands: set[str] = set()
         self._last_spray_time: float = 0
+        self._state_lock = RLock()
+        self._recover_unfinished_events()
+        self._load_default_mode()
+
+    def _recover_unfinished_events(self):
+        """Do not replay commands left active when the backend stopped."""
+        with SyncSession() as session:
+            events = session.scalars(
+                select(SprayEvent).where(
+                    SprayEvent.status.in_([EVENT_PENDING, EVENT_STARTED])
+                )
+            )
+            for event in events:
+                event.status = EVENT_FAILED
+                event.error_message = "Backend restarted before hardware completion was confirmed"
+                event.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            session.commit()
+
+    def _load_default_mode(self):
+        with SyncSession() as session:
+            device = session.scalar(select(Device).where(Device.device_uid == "device-001"))
+            if device:
+                self._current_mode = device.mode
+
+    def _upsert_device(self, session: Session, device_uid: str, status: str = "online") -> Device:
+        device = session.scalar(select(Device).where(Device.device_uid == device_uid))
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        if device is None:
+            device = Device(device_uid=device_uid, status=status, mode="manual")
+            session.add(device)
+        device.status = status
+        device.last_seen_at = now
+        return device
+
+    def _active_event(self, session: Session, device_id: str) -> Optional[SprayEvent]:
+        return session.scalar(
+            select(SprayEvent)
+            .join(Device, SprayEvent.device_id == Device.id)
+            .where(
+                Device.device_uid == device_id,
+                SprayEvent.status.in_([EVENT_PENDING, EVENT_STARTED]),
+            )
+            .order_by(SprayEvent.id.desc())
+        )
+
+    def _fail_active_events(self, session: Session, message: str):
+        events = session.scalars(
+            select(SprayEvent).where(
+                SprayEvent.status.in_([EVENT_PENDING, EVENT_STARTED])
+            )
+        )
+        for event in events:
+            event.status = EVENT_FAILED
+            event.error_message = message
+            event.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    def _set_event_status(
+        self,
+        event_id: int,
+        status: str,
+        error_message: Optional[str] = None,
+    ):
+        with SyncSession() as session:
+            event = session.get(SprayEvent, event_id)
+            if event:
+                event.status = status
+                event.error_message = error_message
+                if status in {EVENT_COMPLETED, EVENT_STOPPED, EVENT_FAILED}:
+                    event.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                session.commit()
 
     @property
     def current_mode(self) -> str:
@@ -44,7 +129,7 @@ class HardwareController:
     def is_emergency_stopped(self) -> bool:
         return self._is_emergency_stopped
 
-    def set_mode(self, mode: str) -> dict:
+    def set_mode(self, mode: str, device_id: str = "device-001") -> dict:
         """Set operating mode (auto/assisted/manual)."""
         if mode not in VALID_MODES:
             return error_response("INVALID_MODE", f"Mode must be one of: {', '.join(VALID_MODES)}")
@@ -52,6 +137,10 @@ class HardwareController:
         if self._is_spraying:
             return error_response("DEVICE_BUSY", "Cannot change mode while spraying")
 
+        with SyncSession() as session:
+            device = self._upsert_device(session, device_id)
+            device.mode = mode
+            session.commit()
         self._current_mode = mode
         logger.info(f"Mode set to: {mode}")
         return success_response({"mode": mode})
@@ -69,63 +158,114 @@ class HardwareController:
         if not command_id:
             command_id = f"cmd-{uuid.uuid4().hex[:8]}"
 
+        with self._state_lock:
+            return self._manual_spray_locked(device_id, servo_angle, duration_ms, command_id)
+
+    def _manual_spray_locked(
+        self,
+        device_id: str,
+        servo_angle: int,
+        duration_ms: int,
+        command_id: str,
+    ) -> dict:
+
         # --- Validation Chain (Section 11) ---
 
-        # 1. Device online check
-        if not serial_manager.is_connected:
-            return error_response("DEVICE_OFFLINE", "ESP32 is not connected", command_id)
-
-        # 2. Correct operating mode
-        if self._current_mode != "manual":
-            return error_response(
-                "WRONG_MODE",
-                f"Manual spray requires MANUAL mode, current: {self._current_mode}",
-                command_id,
+        with SyncSession() as session:
+            connected = serial_manager.is_connected
+            device = self._upsert_device(
+                session,
+                device_id,
+                status="online" if connected else "offline",
             )
+            persisted_mode = device.mode
 
-        # 3. Emergency stop check
-        if self._is_emergency_stopped:
-            return error_response("EMERGENCY_STOP_ACTIVE", "Emergency stop is active", command_id)
+            # 1. Device online check
+            if not connected:
+                session.commit()
+                return error_response("DEVICE_OFFLINE", "ESP32 is not connected", command_id)
 
-        # 4. Servo angle validation
-        if servo_angle < settings.min_servo_angle or servo_angle > settings.max_servo_angle:
-            return error_response(
-                "INVALID_SERVO_ANGLE",
-                f"Servo angle must be {settings.min_servo_angle}-{settings.max_servo_angle}°, got {servo_angle}",
-                command_id,
+            # 2. Correct operating mode
+            if self._current_mode != "manual":
+                session.commit()
+                return error_response(
+                    "WRONG_MODE",
+                    f"Manual spray requires MANUAL mode, current: {self._current_mode}",
+                    command_id,
+                )
+
+            if persisted_mode != self._current_mode:
+                self._current_mode = persisted_mode
+                if self._current_mode != "manual":
+                    session.commit()
+                    return error_response(
+                        "WRONG_MODE",
+                        f"Manual spray requires MANUAL mode, current: {self._current_mode}",
+                        command_id,
+                    )
+
+            # 3. Emergency stop check
+            if self._is_emergency_stopped:
+                session.commit()
+                return error_response("EMERGENCY_STOP_ACTIVE", "Emergency stop is active", command_id)
+
+            # 4. Servo angle validation
+            if servo_angle < settings.min_servo_angle or servo_angle > settings.max_servo_angle:
+                session.commit()
+                return error_response(
+                    "INVALID_SERVO_ANGLE",
+                    f"Servo angle must be {settings.min_servo_angle}-{settings.max_servo_angle}°, got {servo_angle}",
+                    command_id,
+                )
+
+            # 5. Duration validation
+            if duration_ms < settings.min_pump_duration_ms or duration_ms > settings.max_pump_duration_ms:
+                session.commit()
+                return error_response(
+                    "INVALID_DURATION",
+                    f"Duration must be {settings.min_pump_duration_ms}-{settings.max_pump_duration_ms}ms, got {duration_ms}",
+                    command_id,
+                )
+
+            # 6. Persistent idempotency and active spray checks
+            existing = session.scalar(select(SprayEvent).where(SprayEvent.command_id == command_id))
+            if existing:
+                session.commit()
+                return error_response("DUPLICATE_COMMAND", f"Command {command_id} already processed", command_id)
+
+            if self._is_spraying or self._active_event(session, device_id):
+                session.commit()
+                return error_response("ALREADY_SPRAYING", "A spray operation is already in progress", command_id)
+
+            event = SprayEvent(
+                device_id=device.id,
+                mode=self._current_mode,
+                servo_angle=servo_angle,
+                duration_ms=duration_ms,
+                status=EVENT_PENDING,
+                command_id=command_id,
             )
-
-        # 5. Duration validation
-        if duration_ms < settings.min_pump_duration_ms or duration_ms > settings.max_pump_duration_ms:
-            return error_response(
-                "INVALID_DURATION",
-                f"Duration must be {settings.min_pump_duration_ms}-{settings.max_pump_duration_ms}ms, got {duration_ms}",
-                command_id,
-            )
-
-        # 6. Not already spraying
-        if self._is_spraying:
-            return error_response("ALREADY_SPRAYING", "A spray operation is already in progress", command_id)
-
-        # 7. Duplicate command check
-        if command_id in self._processed_commands:
-            return error_response("DUPLICATE_COMMAND", f"Command {command_id} already processed", command_id)
+            session.add(event)
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                return error_response("DUPLICATE_COMMAND", f"Command {command_id} already processed", command_id)
+            event_id = event.id
 
         # --- Send to ESP32 ---
         command = f"SPRAY,{servo_angle},{duration_ms}"
         response = serial_manager.send_command(command)
 
         if response is None:
+            with SyncSession() as session:
+                device = self._upsert_device(session, device_id, status="error")
+                session.commit()
+            self._set_event_status(event_id, EVENT_FAILED, "No response from ESP32")
             return error_response("COMMUNICATION_ERROR", "No response from ESP32", command_id)
 
-        # Track processed command
-        self._processed_commands.add(command_id)
-        # Keep set from growing unbounded
-        if len(self._processed_commands) > 1000:
-            self._processed_commands.clear()
-
-        # Parse ESP32 response
         if response.startswith("ACK,SPRAY_STARTED"):
+            self._set_event_status(event_id, EVENT_STARTED)
             self._is_spraying = True
             self._last_spray_time = time.time()
             return success_response({
@@ -136,6 +276,7 @@ class HardwareController:
                 "esp32_response": response,
             })
 
+        self._set_event_status(event_id, EVENT_FAILED, response)
         if response.startswith("ACK,ERROR"):
             parts = response.split(",")
             error_code = parts[2] if len(parts) > 2 else "UNKNOWN"
@@ -154,20 +295,29 @@ class HardwareController:
 
         response = serial_manager.send_command("STOP")
 
-        self._is_spraying = False
-
         if response and response.startswith("ACK,STOPPED"):
+            with SyncSession() as session:
+                event = self._active_event(session, device_id)
+                if event:
+                    event.status = EVENT_STOPPED
+                    event.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    session.commit()
+            self._is_spraying = False
             return success_response({"status": "stopped"})
 
         if response is None:
             return error_response("COMMUNICATION_ERROR", "No response from ESP32")
 
-        return success_response({"status": "stop_sent", "esp32_response": response})
+        return error_response("UNEXPECTED_RESPONSE", f"Unexpected ESP32 response: {response}")
 
     def emergency_stop(self) -> dict:
         """Software emergency stop — no confirmation dialog."""
         self._is_emergency_stopped = True
         self._is_spraying = False
+
+        with SyncSession() as session:
+            self._fail_active_events(session, "Emergency stop activated before completion")
+            session.commit()
 
         if serial_manager.is_connected:
             serial_manager.send_command("ESTOP")
@@ -175,13 +325,34 @@ class HardwareController:
         return success_response({"status": "emergency_stopped"})
 
     def reset_emergency_stop(self) -> dict:
-        """Reset software emergency stop."""
-        self._is_emergency_stopped = False
-        return success_response({"status": "emergency_stop_reset"})
+        """Reset the emergency stop only after the ESP32 confirms it."""
+        if not serial_manager.is_connected:
+            return error_response("DEVICE_OFFLINE", "ESP32 is not connected")
+
+        response = serial_manager.send_command("RESET_ESTOP")
+        if response is None:
+            return error_response("COMMUNICATION_ERROR", "No response from ESP32")
+
+        if response.startswith("ACK,ESTOP_RESET"):
+            self._is_emergency_stopped = False
+            return success_response({"status": "emergency_stop_reset"})
+
+        if response.startswith("ACK,ERROR,ESTOP_STILL_PRESSED"):
+            return error_response("ESTOP_STILL_PRESSED", "Physical emergency stop is still pressed")
+
+        return error_response("UNEXPECTED_RESPONSE", f"Unexpected ESP32 response: {response}")
 
     def get_status(self, device_id: str) -> dict:
         """Query ESP32 status."""
         if not serial_manager.is_connected:
+            with SyncSession() as session:
+                device = self._upsert_device(session, device_id, status="offline")
+                event = self._active_event(session, device_id)
+                if event:
+                    event.status = EVENT_FAILED
+                    event.error_message = "Communication lost before hardware completion was confirmed"
+                    event.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                session.commit()
             return success_response({
                 "device_uid": device_id,
                 "status": "offline",
@@ -191,6 +362,12 @@ class HardwareController:
             })
 
         response = serial_manager.send_command("STATUS")
+
+        with SyncSession() as session:
+            device = self._upsert_device(session, device_id, status="online")
+            if self._current_mode == "manual" and device.mode != self._current_mode:
+                self._current_mode = device.mode
+            session.commit()
 
         status_data = {
             "device_uid": device_id,
@@ -223,7 +400,52 @@ class HardwareController:
             except (ValueError, IndexError):
                 logger.warning(f"Error parsing STATUS response: {response}")
 
+        if response and "PUMP,OFF" in response and "STATUS,ESTOP," not in response:
+            with SyncSession() as session:
+                event = self._active_event(session, device_id)
+                if event:
+                    event.status = EVENT_COMPLETED
+                    event.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    session.commit()
+                    self._is_spraying = False
+        elif response and "STATUS,ESTOP," in response:
+            with SyncSession() as session:
+                event = self._active_event(session, device_id)
+                if event:
+                    event.status = EVENT_FAILED
+                    event.error_message = "Emergency stop reported before completion"
+                    event.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    session.commit()
+
         return success_response(status_data)
+
+    def get_history(self, device_id: Optional[str] = None, limit: int = 50) -> list[dict]:
+        """Return UI-safe persistent spray history."""
+        with SyncSession() as session:
+            query = (
+                select(SprayEvent, Device.device_uid)
+                .join(Device, SprayEvent.device_id == Device.id)
+                .order_by(SprayEvent.id.desc())
+                .limit(limit)
+            )
+            if device_id:
+                query = query.where(Device.device_uid == device_id)
+
+            return [
+                {
+                    "id": event.id,
+                    "device_id": uid,
+                    "mode": event.mode,
+                    "servo_angle": event.servo_angle,
+                    "duration_ms": event.duration_ms,
+                    "status": event.status,
+                    "command_id": event.command_id,
+                    "error_message": event.error_message,
+                    "started_at": event.started_at.isoformat() if event.started_at else None,
+                    "completed_at": event.completed_at.isoformat() if event.completed_at else None,
+                }
+                for event, uid in session.execute(query).all()
+            ]
 
 
 # Singleton instance

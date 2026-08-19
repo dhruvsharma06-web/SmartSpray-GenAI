@@ -1,0 +1,7 @@
+# Generated data stays local and is intentionally ignored by Git.
+path: ../datasets/processed/plantseg_tomato_early_blight
+train: images/train
+val: images/val
+test: images/test
+names:
+  0: early_blight_lesion

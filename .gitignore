@@ -50,5 +50,14 @@ backend/data/models/*.pt
 !backend/data/models/.gitkeep
 
 # ML
-ml/datasets/
+ml/datasets/raw/**
+ml/datasets/processed/**
+ml/datasets/manifests/*.txt
 ml/notebooks/.ipynb_checkpoints/
+!ml/datasets/README.md
+!ml/datasets/raw/
+!ml/datasets/raw/.gitkeep
+!ml/datasets/processed/
+!ml/datasets/processed/.gitkeep
+!ml/datasets/manifests/
+!ml/datasets/manifests/.gitkeep

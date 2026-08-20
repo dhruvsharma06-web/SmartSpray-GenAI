@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # AI
     ai_leaf_model_path: str = Field(default="./data/models/leaf_detector_best.pt")
-    ai_lesion_model_path: str = Field(default="../ml/runs/yolo11n_seg_plantseg/weights/best.pt")
+    ai_lesion_model_path: str = Field(default="./data/models/disease_detector.pt")
     ai_confidence_threshold: float = Field(default=0.50)
     ai_camera_index: int = Field(default=0, ge=0)
     ai_device: str = Field(default="auto")

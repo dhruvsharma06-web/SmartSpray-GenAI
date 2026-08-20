@@ -1,0 +1,13 @@
+path: C:/Users/maste/SmartSpray/SmartSpray/dataset
+
+train: train/images
+val: valid/images
+test: test/images
+
+nc: 4
+
+names:
+  0: Healthy
+  1: Early Blight
+  2: Late Blight
+  3: Septoria

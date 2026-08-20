@@ -86,3 +86,5 @@ test_segmentation.py
 flutter_app/test_mask.jpg
 test_mask.jpg
 backend/data/
+**/labels.cache
+*.cache

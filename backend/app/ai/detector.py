@@ -72,7 +72,8 @@ class Detector:
             names = getattr(result, "names", None)
             if names is None and self._model_loader:
                 names = self._model_loader.class_names
-            for coordinates, confidence, class_id in zip(xyxy, confidences, classes):
+            mask_polygons = self._mask_polygons(result, len(xyxy))
+            for index, (coordinates, confidence, class_id) in enumerate(zip(xyxy, confidences, classes)):
                 if len(coordinates) != 4:
                     raise DetectionError("Model returned an invalid bounding box")
                 x1, y1, x2, y2 = (float(value) for value in coordinates)
@@ -92,9 +93,33 @@ class Detector:
                             width=x2 - x1,
                             height=y2 - y1,
                         ),
+                        mask_polygons=mask_polygons[index][0] if mask_polygons else None,
+                        mask_area_pixels=mask_polygons[index][1] if mask_polygons else None,
                     )
                 )
         return detections
+
+    @staticmethod
+    def _mask_polygons(result: Any, count: int) -> list[tuple[list[list[float]], float]] | None:
+        masks = getattr(result, "masks", None)
+        if masks is None or getattr(masks, "xy", None) is None:
+            return None
+        polygons = masks.xy
+        if hasattr(polygons, "tolist"):
+            polygons = polygons.tolist()
+        shape = getattr(result, "orig_shape", None)
+        if not isinstance(polygons, list) or len(polygons) != count or not shape:
+            raise DetectionError("Model returned invalid segmentation masks")
+        height, width = shape[:2]
+        parsed = []
+        for polygon in polygons:
+            points = polygon.tolist() if hasattr(polygon, "tolist") else polygon
+            if not isinstance(points, list) or len(points) < 3:
+                raise DetectionError("Model returned an invalid segmentation polygon")
+            normalized = [[float(x) / width, float(y) / height] for x, y in points]
+            area = abs(sum(points[i][0] * points[(i + 1) % len(points)][1] - points[(i + 1) % len(points)][0] * points[i][1] for i in range(len(points))) / 2)
+            parsed.append((normalized, area))
+        return parsed
 
     @staticmethod
     def _values(value: Any, label: str) -> list[Any]:

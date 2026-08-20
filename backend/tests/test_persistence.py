@@ -1,4 +1,7 @@
-"""Persistence and lifecycle tests for the hardware application state."""
+"""Persistence and lifecycle tests for the hardware application state.
+
+Pump-only architecture — no servo_angle in the active path.
+"""
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -44,7 +47,7 @@ def test_device_upsert_and_mode_survive_controller_restart():
 
 def test_started_and_completed_lifecycle_is_persisted():
     controller = HardwareController()
-    result = controller.manual_spray("device-lifecycle", 90, 1000, "lifecycle-start")
+    result = controller.manual_spray("device-lifecycle", 1000, "lifecycle-start")
     assert result["success"] is True
     assert _event("lifecycle-start").status == EVENT_STARTED
 
@@ -60,11 +63,11 @@ def test_pending_event_is_committed_before_serial_send(monkeypatch):
 
     def inspect_before_ack(command):
         observed["status"] = _event("pending-command").status
-        return "ACK,SPRAY_STARTED,90,1000"
+        return "ACK,SPRAY_STARTED,1000"
 
     monkeypatch.setattr(serial_manager, "send_command", inspect_before_ack)
 
-    result = controller.manual_spray("device-pending", 90, 1000, "pending-command")
+    result = controller.manual_spray("device-pending", 1000, "pending-command")
 
     assert result["success"] is True
     assert observed["status"] == "PENDING"
@@ -72,7 +75,7 @@ def test_pending_event_is_committed_before_serial_send(monkeypatch):
 
 def test_stop_marks_started_event_stopped():
     controller = HardwareController()
-    controller.manual_spray("device-stop", 90, 1000, "lifecycle-stop")
+    controller.manual_spray("device-stop", 1000, "lifecycle-stop")
 
     result = controller.stop("device-stop")
 
@@ -82,9 +85,9 @@ def test_stop_marks_started_event_stopped():
 
 def test_failed_esp32_response_is_persisted(monkeypatch):
     controller = HardwareController()
-    monkeypatch.setattr(serial_manager, "send_command", lambda command: "ACK,ERROR,INVALID_ANGLE,5")
+    monkeypatch.setattr(serial_manager, "send_command", lambda command: "ACK,ERROR,PUMP_FAIL")
 
-    result = controller.manual_spray("device-failed", 90, 1000, "lifecycle-failed")
+    result = controller.manual_spray("device-failed", 1000, "lifecycle-failed")
 
     assert result["success"] is False
     assert _event("lifecycle-failed").status == EVENT_FAILED
@@ -94,7 +97,7 @@ def test_communication_failure_is_persisted(monkeypatch):
     controller = HardwareController()
     monkeypatch.setattr(serial_manager, "send_command", lambda command: None)
 
-    result = controller.manual_spray("device-comm-failed", 90, 1000, "lifecycle-comm-failed")
+    result = controller.manual_spray("device-comm-failed", 1000, "lifecycle-comm-failed")
 
     assert result["success"] is False
     assert _event("lifecycle-comm-failed").status == EVENT_FAILED
@@ -102,10 +105,10 @@ def test_communication_failure_is_persisted(monkeypatch):
 
 def test_duplicate_command_survives_controller_restart():
     first = HardwareController()
-    assert first.manual_spray("device-restart", 90, 1000, "restart-command")["success"] is True
+    assert first.manual_spray("device-restart", 1000, "restart-command")["success"] is True
 
     second = HardwareController()
-    result = second.manual_spray("device-restart", 90, 1000, "restart-command")
+    result = second.manual_spray("device-restart", 1000, "restart-command")
 
     assert result["success"] is False
     assert result["error"]["code"] == "DUPLICATE_COMMAND"
@@ -113,16 +116,16 @@ def test_duplicate_command_survives_controller_restart():
 
 def test_restart_marks_unfinished_event_failed_without_replay(monkeypatch):
     first = HardwareController()
-    first.manual_spray("device-interrupted", 90, 1000, "interrupted-command")
+    first.manual_spray("device-interrupted", 1000, "interrupted-command")
 
     sent = []
     monkeypatch.setattr(
         serial_manager,
         "send_command",
-        lambda command: sent.append(command) or "ACK,SPRAY_STARTED,90,1000",
+        lambda command: sent.append(command) or "ACK,SPRAY_STARTED,1000",
     )
     second = HardwareController()
-    result = second.manual_spray("device-interrupted", 90, 1000, "interrupted-command")
+    result = second.manual_spray("device-interrupted", 1000, "interrupted-command")
 
     event = _event("interrupted-command")
     assert result["error"]["code"] == "DUPLICATE_COMMAND"
@@ -132,7 +135,7 @@ def test_restart_marks_unfinished_event_failed_without_replay(monkeypatch):
 
 def test_disconnect_marks_active_event_failed_without_completion():
     controller = HardwareController()
-    controller.manual_spray("device-disconnect", 90, 1000, "disconnect-command")
+    controller.manual_spray("device-disconnect", 1000, "disconnect-command")
     serial_manager.disconnect()
 
     status = controller.get_status("device-disconnect")
@@ -147,11 +150,11 @@ def test_disconnect_marks_active_event_failed_without_completion():
 
 def test_physical_estop_status_cannot_complete_event(monkeypatch):
     controller = HardwareController()
-    controller.manual_spray("device-estop", 90, 1000, "estop-command")
+    controller.manual_spray("device-estop", 1000, "estop-command")
     monkeypatch.setattr(
         serial_manager,
         "send_command",
-        lambda command: "STATUS,ESTOP,SERVO,90,PUMP,OFF,RUNTIME,0,FW,0.1.0",
+        lambda command: "STATUS,ESTOP,PUMP,OFF,RUNTIME,0,FW,0.2.0",
     )
 
     status = controller.get_status("device-estop")
@@ -167,7 +170,7 @@ def test_concurrent_duplicate_command_does_not_send_twice():
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         results = list(executor.map(
-            lambda _: controller.manual_spray("device-concurrent", 90, 1000, "concurrent-command"),
+            lambda _: controller.manual_spray("device-concurrent", 1000, "concurrent-command"),
             range(2),
         ))
 
@@ -177,9 +180,9 @@ def test_concurrent_duplicate_command_does_not_send_twice():
 
 def test_different_command_is_rejected_while_spray_active():
     controller = HardwareController()
-    controller.manual_spray("device-busy", 90, 1000, "busy-first")
+    controller.manual_spray("device-busy", 1000, "busy-first")
 
-    result = controller.manual_spray("device-busy", 90, 1000, "busy-second")
+    result = controller.manual_spray("device-busy", 1000, "busy-second")
 
     assert result["success"] is False
     assert result["error"]["code"] == "ALREADY_SPRAYING"
@@ -187,7 +190,7 @@ def test_different_command_is_rejected_while_spray_active():
 
 def test_history_returns_ui_safe_persistent_fields():
     controller = HardwareController()
-    controller.manual_spray("device-history", 90, 1000, "history-command")
+    controller.manual_spray("device-history", 1000, "history-command")
 
     history = controller.get_history(device_id="device-history")
 
@@ -195,6 +198,8 @@ def test_history_returns_ui_safe_persistent_fields():
     assert history[0]["command_id"] == "history-command"
     assert history[0]["status"] == EVENT_STARTED
     assert "esp32_response" not in history[0]
+    # servo_angle must not appear in history output
+    assert "servo_angle" not in history[0]
 
 
 @pytest.mark.anyio
@@ -203,7 +208,6 @@ async def test_history_api_returns_persisted_events(client):
         "/api/v1/spray/manual",
         json={
             "device_id": "device-history-api",
-            "servo_angle": 90,
             "duration_ms": 1000,
             "command_id": "history-api-command",
         },

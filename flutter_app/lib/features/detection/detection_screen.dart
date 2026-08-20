@@ -39,11 +39,11 @@ class DetectionScreen extends ConsumerWidget {
   }
 
   Widget _buildStatusPanel(DetectionState state) {
-    if (state == DetectionState.idle) {
+    if (state.status == DetectionStatus.idle) {
       return const Center(child: Text('Press START SCAN to begin.'));
     }
 
-    if (state == DetectionState.scanning) {
+    if (state.status == DetectionStatus.scanning) {
       return const Center(
         child: Column(
           children: [
@@ -55,51 +55,67 @@ class DetectionScreen extends ConsumerWidget {
       );
     }
 
+    if (state.status == DetectionStatus.error || state.status == DetectionStatus.offline) {
+      return Center(
+        child: Text(
+          state.errorMessage ?? 'Error occurred.',
+          style: const TextStyle(color: AppTheme.error, fontWeight: FontWeight.bold)
+        ),
+      );
+    }
+
+    final data = state.aiResult?['data'];
+    final decision = state.aiResult?['decision'];
+
+    if (data == null || decision == null) return const SizedBox.shrink();
+
+    final disease = data['disease'] ?? 'healthy';
+    final isUncertain = data['uncertain'] == true;
+    final leaf = data['leaf'];
+    final lesion = data['lesion'];
+    final severity = data['severity'];
+
+    if (isUncertain) {
+      return Card(
+        color: AppTheme.warning,
+        child: const Padding(
+           padding: EdgeInsets.all(16),
+           child: Text('AI RESULT UNCERTAIN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        )
+      );
+    }
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (state.index >= DetectionState.plantDetected.index)
-              const _StatusRow(icon: Icons.eco, text: 'Plant detected', color: Colors.green),
-            if (state.index >= DetectionState.leafDetected.index)
+            if (leaf != null && leaf['detected'] == true)
               const _StatusRow(icon: Icons.spa, text: 'Leaf detected', color: Colors.blue),
-            if (state.index >= DetectionState.diseaseDetected.index) ...[
-              const Divider(),
-              const Text('Disease: Early Blight', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const Text('Confidence: 94%'),
+
+            const Divider(),
+            if (disease != 'healthy') ...[
+              Text('Disease: ${disease.replaceAll("_", " ")}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              if (lesion != null && lesion['confidence'] != null)
+                Text('Confidence: ${(lesion['confidence'] * 100).toStringAsFixed(1)}%'),
+            ] else ...[
+               const Text('Healthy Plant', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.success)),
             ],
-            if (state.index >= DetectionState.targetReady.index) ...[
+
+            if (severity != null) ...[
               const Divider(),
-              const Text('Severity: 62%', style: TextStyle(color: AppTheme.moderate, fontWeight: FontWeight.bold)),
-              const Text('Recommended: MODERATE SPRAY'),
+              Text('Severity: ${severity['percentage']?.toStringAsFixed(1) ?? '0'}%', style: const TextStyle(color: AppTheme.moderate, fontWeight: FontWeight.bold)),
+              Text('Severity Level: ${severity['level']}', style: const TextStyle(fontWeight: FontWeight.bold)),
             ],
-            if (state == DetectionState.waitingForConfirmation) ...[
-              const Divider(),
-              const Text(
-                'Aim nozzle at highlighted target.',
-                style: TextStyle(color: AppTheme.emergency, fontWeight: FontWeight.bold),
+            const Divider(),
+            Text(
+              'Recommended: ${decision['recommendation']}',
+              style: TextStyle(
+                color: decision['recommendation'] == 'NO_SPRAY' ? AppTheme.text : AppTheme.emergency,
+                fontWeight: FontWeight.bold
               ),
-            ],
-            if (state == DetectionState.spraying) ...[
-              const Divider(),
-              const Center(
-                child: Column(
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 8),
-                    Text('Spraying...'),
-                  ],
-                ),
-              ),
-            ],
-            if (state == DetectionState.sprayCompleted) ...[
-              const Divider(),
-              const Center(
-                child: Text('Spray complete', style: TextStyle(color: AppTheme.success, fontWeight: FontWeight.bold, fontSize: 18)),
-              ),
-            ],
+            ),
           ],
         ),
       ),
@@ -107,7 +123,7 @@ class DetectionScreen extends ConsumerWidget {
   }
 
   Widget _buildControls(BuildContext context, DetectionState state, DetectionStateNotifier notifier) {
-    if (state == DetectionState.idle || state == DetectionState.sprayCompleted) {
+    if (state.status == DetectionStatus.idle) {
       return ElevatedButton.icon(
         onPressed: () => notifier.startScan(),
         icon: const Icon(Icons.document_scanner),
@@ -115,7 +131,10 @@ class DetectionScreen extends ConsumerWidget {
       );
     }
 
-    if (state == DetectionState.waitingForConfirmation) {
+    if (state.status == DetectionStatus.resultReady) {
+      final decision = state.aiResult?['decision'];
+      final canSpray = decision != null && decision['recommendation'] != 'NO_SPRAY' && decision['auto_permitted'] == true;
+
       return Row(
         children: [
           Expanded(
@@ -131,7 +150,7 @@ class DetectionScreen extends ConsumerWidget {
           Expanded(
             flex: 2,
             child: ElevatedButton(
-              onPressed: () => notifier.spray(),
+              onPressed: canSpray ? () => notifier.spray() : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.moderate,
               ),
@@ -142,7 +161,7 @@ class DetectionScreen extends ConsumerWidget {
       );
     }
 
-    if (state == DetectionState.spraying) {
+    if (state.status == DetectionStatus.spraying) {
       return ElevatedButton(
         onPressed: null,
         style: ElevatedButton.styleFrom(

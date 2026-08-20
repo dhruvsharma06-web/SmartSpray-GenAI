@@ -1,72 +1,91 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../repositories/ai_repository.dart';
+import '../../repositories/spray_repository.dart';
 
-enum DetectionState {
+enum DetectionStatus {
   idle,
   scanning,
-  plantDetected,
-  leafDetected,
-  diseaseDetected,
-  targetReady,
-  waitingForConfirmation,
+  resultReady,
   spraying,
-  sprayCompleted,
   error,
   offline
 }
 
-class DetectionStateNotifier extends StateNotifier<DetectionState> {
-  DetectionStateNotifier() : super(DetectionState.idle);
+class DetectionState {
+  final DetectionStatus status;
+  final Map<String, dynamic>? aiResult;
+  final String? errorMessage;
 
-  void startScan() {
-    state = DetectionState.scanning;
-    _mockFlow();
-  }
+  const DetectionState({
+    this.status = DetectionStatus.idle,
+    this.aiResult,
+    this.errorMessage,
+  });
 
-  void _mockFlow() async {
-    await Future.delayed(const Duration(seconds: 1));
-    if (state != DetectionState.scanning) return;
-    setPlantDetected();
-    await Future.delayed(const Duration(seconds: 1));
-    if (state != DetectionState.plantDetected) return;
-    setLeafDetected();
-    await Future.delayed(const Duration(seconds: 1));
-    if (state != DetectionState.leafDetected) return;
-    setDiseaseDetected();
-    await Future.delayed(const Duration(seconds: 1));
-    if (state != DetectionState.diseaseDetected) return;
-    setTargetReady();
-    await Future.delayed(const Duration(seconds: 1));
-    if (state != DetectionState.targetReady) return;
-    setWaitingForConfirmation();
-  }
-
-  void setPlantDetected() => state = DetectionState.plantDetected;
-  void setLeafDetected() => state = DetectionState.leafDetected;
-  void setDiseaseDetected() => state = DetectionState.diseaseDetected;
-  void setTargetReady() => state = DetectionState.targetReady;
-  void setWaitingForConfirmation() => state = DetectionState.waitingForConfirmation;
-
-  void spray() async {
-    if (state != DetectionState.waitingForConfirmation) return;
-    state = DetectionState.spraying;
-    await Future.delayed(const Duration(seconds: 2));
-    if (state != DetectionState.spraying) return;
-    setSprayCompleted();
-  }
-
-  void setSprayCompleted() => state = DetectionState.sprayCompleted;
-  void setError() => state = DetectionState.error;
-  void setEmergencyStopped() => state = DetectionState.error;
-
-  void skip() {
-    state = DetectionState.idle;
-  }
-
-  void reset() {
-    state = DetectionState.idle;
+  DetectionState copyWith({
+    DetectionStatus? status,
+    Map<String, dynamic>? aiResult,
+    String? errorMessage,
+  }) {
+    return DetectionState(
+      status: status ?? this.status,
+      aiResult: aiResult ?? this.aiResult,
+      errorMessage: errorMessage,
+    );
   }
 }
 
-final detectionStateProvider = StateNotifierProvider<DetectionStateNotifier, DetectionState>((ref) {
+class DetectionStateNotifier extends Notifier<DetectionState> {
+  @override
+  DetectionState build() => const DetectionState();
+
+  void startScan() async {
+    state = state.copyWith(status: DetectionStatus.scanning);
+    try {
+      final res = await ref.read(aiRepositoryProvider).detect();
+      if (res['success'] == true) {
+        state = state.copyWith(status: DetectionStatus.resultReady, aiResult: res);
+      } else {
+        state = state.copyWith(status: DetectionStatus.error, errorMessage: "Detection failed: ${res['error']}");
+      }
+    } catch (e) {
+      state = state.copyWith(status: DetectionStatus.offline, errorMessage: "Backend API offline");
+    }
+  }
+
+  void spray() async {
+    if (state.status != DetectionStatus.resultReady) return;
+
+    // Auto-spray based on AI
+    final decision = state.aiResult?['decision'];
+    if (decision == null || decision['auto_permitted'] == false) {
+      state = state.copyWith(status: DetectionStatus.error, errorMessage: "Spray not permitted by AI constraints.");
+      return;
+    }
+
+    state = state.copyWith(status: DetectionStatus.spraying);
+    try {
+      // Backend handles exact duration for recommendation levels, but we can pass a proxy or update endpoint
+      // Actually backend /api/v1/spray/manual takes duration_ms.
+      // If we are in ASSISTED mode, we shouldn't necessarily use manual spray, but the backend doesn't have an assisted spray endpoint!
+      // We will spray manually for 1000ms as a safe default demo!
+      await ref.read(sprayRepositoryProvider).sprayManual('device-001', 1.0);
+      await Future.delayed(const Duration(seconds: 2));
+      state = const DetectionState(status: DetectionStatus.idle);
+    } catch (e) {
+      state = state.copyWith(status: DetectionStatus.error, errorMessage: "Spray command failed.");
+    }
+  }
+
+  void skip() {
+    state = const DetectionState(status: DetectionStatus.idle);
+  }
+
+  void reset() {
+    state = const DetectionState(status: DetectionStatus.idle);
+  }
+}
+
+final detectionStateProvider = NotifierProvider<DetectionStateNotifier, DetectionState>(() {
   return DetectionStateNotifier();
 });

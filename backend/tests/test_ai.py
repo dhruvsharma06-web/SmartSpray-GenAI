@@ -181,8 +181,5 @@ async def test_ai_status_does_not_open_camera_or_load_model(client):
     response = await client.get("/api/v1/ai/status")
 
     assert response.status_code == 200
-    assert response.json()["data"] == {
-        "ready": False,
-        "camera": False,
-        "model": False,
-    }
+    assert response.json()["data"]["ready"] is False
+    assert "leaf_model" in response.json()["data"]

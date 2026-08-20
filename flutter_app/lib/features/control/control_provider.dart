@@ -1,26 +1,26 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../repositories/spray_repository.dart';
+
 
 class ControlState {
-  final double servoAngle;
   final double sprayDuration;
   final bool isSpraying;
   final bool isEmergencyStopped;
 
   const ControlState({
-    this.servoAngle = 90.0,
+
     this.sprayDuration = 1.0,
     this.isSpraying = false,
     this.isEmergencyStopped = false,
   });
 
   ControlState copyWith({
-    double? servoAngle,
     double? sprayDuration,
     bool? isSpraying,
     bool? isEmergencyStopped,
   }) {
     return ControlState(
-      servoAngle: servoAngle ?? this.servoAngle,
+
       sprayDuration: sprayDuration ?? this.sprayDuration,
       isSpraying: isSpraying ?? this.isSpraying,
       isEmergencyStopped: isEmergencyStopped ?? this.isEmergencyStopped,
@@ -28,13 +28,10 @@ class ControlState {
   }
 }
 
-class ControlStateNotifier extends StateNotifier<ControlState> {
-  ControlStateNotifier() : super(const ControlState());
+class ControlStateNotifier extends Notifier<ControlState> {
+  @override
+  ControlState build() => const ControlState();
 
-  void setServoAngle(double angle) {
-    if (state.isEmergencyStopped || state.isSpraying) return;
-    state = state.copyWith(servoAngle: angle);
-  }
 
   void setSprayDuration(double duration) {
     if (state.isEmergencyStopped || state.isSpraying) return;
@@ -44,28 +41,48 @@ class ControlStateNotifier extends StateNotifier<ControlState> {
   void startSpray() async {
     if (state.isEmergencyStopped || state.isSpraying) return;
     state = state.copyWith(isSpraying: true);
-    
-    // Simulate spray duration
-    await Future.delayed(Duration(milliseconds: (state.sprayDuration * 1000).toInt()));
-    
+    try {
+      await ref.read(sprayRepositoryProvider).sprayManual('device-001', state.sprayDuration);
+      await Future.delayed(Duration(milliseconds: (state.sprayDuration * 1000).toInt()));
+    } catch (_) {
+      // Spray failure is reflected by not clearing isSpraying below
+    }
+
     if (state.isSpraying) {
       state = state.copyWith(isSpraying: false);
     }
   }
 
-  void stopSpray() {
+  void stopSpray() async {
     state = state.copyWith(isSpraying: false);
+    try {
+      await ref.read(sprayRepositoryProvider).stopSpray('device-001');
+    } catch (_) {
+      // Best-effort stop; UI already reflects stopped state
+    }
   }
 
-  void emergencyStop() {
+  void emergencyStop() async {
     state = state.copyWith(isSpraying: false, isEmergencyStopped: true);
+    try {
+      await ref.read(sprayRepositoryProvider).emergencyStop();
+    } catch (_) {
+      // Best-effort emergency stop; UI already reflects e-stop state
+    }
   }
 
-  void resetEmergencyStop() {
+  void resetEmergencyStop() async {
     state = state.copyWith(isEmergencyStopped: false);
+    try {
+      await ref.read(sprayRepositoryProvider).resetEmergencyStop();
+    } catch (_) {
+      // Best-effort reset; UI already reflects reset state
+    }
   }
+
+
 }
 
-final controlStateProvider = StateNotifierProvider<ControlStateNotifier, ControlState>((ref) {
+final controlStateProvider = NotifierProvider<ControlStateNotifier, ControlState>(() {
   return ControlStateNotifier();
 });

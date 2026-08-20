@@ -2,20 +2,18 @@
 // SmartSpray ESP32 Main
 // ============================================================
 // Firmware for handheld precision spraying system.
-// Controls servo (nozzle angle) and pump via serial commands.
+// Controls pump via serial commands from the backend.
 // Safety is enforced independently of the host software.
 // ============================================================
 
 #include <Arduino.h>
 #include "config.h"
-#include "servo.h"
 #include "pump.h"
 #include "safety.h"
 #include "communication.h"
 
 using namespace SmartSpray;
 
-static ServoController servo;
 static PumpController pump;
 static SafetyManager safety;
 static CommandParser parser;
@@ -33,9 +31,8 @@ void setup() {
 
     // Initialize subsystems — order matters
     pump.init();      // Pump OFF first (safety critical)
-    servo.init();     // Servo to default angle
-    safety.init(&pump, &servo);  // Safety monitors pump + servo
-    parser.init(&servo, &pump, &safety);  // Parser needs all three
+    safety.init(&pump);  // Safety monitors pump
+    parser.init(&pump, &safety);  // Parser needs pump + safety
 
     Serial.println("INFO,BOOT_COMPLETE");
 }

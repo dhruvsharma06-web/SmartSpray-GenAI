@@ -17,24 +17,14 @@ class DeviceRepositoryImpl implements DeviceRepository {
     try {
       final response = await _api.get('${ApiConfig.devices}/$deviceId/status');
       return response.data;
-    } catch (e) {
-      // Return mock data fallback if real backend is missing during development
-      return {
-        'status': 'online',
-        'mode': 'ASSISTED',
-        'esp32_connected': true,
-        'pump_status': 'off'
-      };
-    }
+    } catch (e) { rethrow; }
   }
 
   @override
   Future<void> setDeviceMode(String deviceId, String mode) async {
     try {
       await _api.post('${ApiConfig.devices}/$deviceId/mode', data: {'mode': mode});
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) { rethrow; }
   }
 }
 

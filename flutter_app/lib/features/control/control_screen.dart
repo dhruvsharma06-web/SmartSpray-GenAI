@@ -39,7 +39,7 @@ class ControlScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 24),
-            
+
             if (state.isEmergencyStopped)
               Card(
                 color: AppTheme.emergency,
@@ -61,23 +61,13 @@ class ControlScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-            
+
             const SizedBox(height: 24),
-            
-            _buildControlSection(
-              title: 'Servo Angle: ${state.servoAngle.toInt()}°',
-              child: Slider(
-                value: state.servoAngle,
-                min: 20,
-                max: 160,
-                divisions: 140,
-                label: '${state.servoAngle.toInt()}°',
-                onChanged: state.isEmergencyStopped || state.isSpraying ? null : (v) => notifier.setServoAngle(v),
-              ),
-            ),
-            
+
+
+
             const SizedBox(height: 24),
-            
+
             _buildControlSection(
               title: 'Spray Duration: ${state.sprayDuration.toStringAsFixed(1)}s',
               child: Slider(
@@ -89,9 +79,9 @@ class ControlScreen extends ConsumerWidget {
                 onChanged: state.isEmergencyStopped || state.isSpraying ? null : (v) => notifier.setSprayDuration(v),
               ),
             ),
-            
+
             const SizedBox(height: 48),
-            
+
             Row(
               children: [
                 Expanded(
@@ -117,9 +107,9 @@ class ControlScreen extends ConsumerWidget {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 48),
-            
+
             ElevatedButton.icon(
               onPressed: state.isEmergencyStopped ? null : () => notifier.emergencyStop(),
               icon: const Icon(Icons.dangerous),

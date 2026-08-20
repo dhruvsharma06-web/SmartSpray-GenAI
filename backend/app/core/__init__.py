@@ -28,9 +28,7 @@ class Settings(BaseSettings):
     severity_mild_max: int = Field(default=25)
     severity_moderate_max: int = Field(default=60)
 
-    # Hardware limits
-    max_servo_angle: int = Field(default=160)
-    min_servo_angle: int = Field(default=20)
+    # Hardware limits (pump-only — servo has been removed)
     max_pump_duration_ms: int = Field(default=3000)
     min_pump_duration_ms: int = Field(default=100)
 

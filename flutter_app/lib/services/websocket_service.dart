@@ -10,11 +10,11 @@ class WebSocketService {
   void connect(String deviceId) {
     _channel?.sink.close();
     _controller?.close();
-    
+
     _controller = StreamController<dynamic>.broadcast();
     final url = Uri.parse('${ApiConfig.wsUrl}/device/$deviceId');
     _channel = WebSocketChannel.connect(url);
-    
+
     _channel!.stream.listen(
       (data) {
         _controller?.add(data);

@@ -5,14 +5,14 @@ class AppTheme {
   static const Color primary = Color(0xFF2E7D32);
   static const Color primaryDark = Color(0xFF1B5E20);
   static const Color primaryLight = Color(0xFFE8F5E9);
-  
+
   static const Color background = Color(0xFFF7F9F7);
   static const Color surface = Color(0xFFFFFFFF);
-  
+
   static const Color text = Color(0xFF172018);
   static const Color secondaryText = Color(0xFF5F6B61);
   static const Color border = Color(0xFFDDE3DE);
-  
+
   static const Color success = Color(0xFF2E7D32);
   static const Color warning = Color(0xFFF9A825);
   static const Color moderate = Color(0xFFEF8F00);

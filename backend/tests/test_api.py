@@ -1,8 +1,9 @@
-"""Tests for API endpoints.
+"""Tests for API endpoints — pump-only contract.
 
 Verifies the API contract from Section 12:
 - Success responses: {"success": true, "data": {}}
 - Error responses: {"success": false, "error": {"code": "...", "message": "..."}}
+- ManualSprayRequest rejects obsolete servo_angle field (extra="forbid")
 """
 
 import os
@@ -41,7 +42,6 @@ async def test_health(client):
 async def test_manual_spray_success(client):
     resp = await client.post("/api/v1/spray/manual", json={
         "device_id": "device-001",
-        "servo_angle": 90,
         "duration_ms": 1000,
         "command_id": "test-cmd-api-1",
     })
@@ -52,17 +52,15 @@ async def test_manual_spray_success(client):
 
 
 @pytest.mark.anyio
-async def test_manual_spray_invalid_angle(client):
+async def test_servo_angle_rejected_as_extra_field(client):
+    """ManualSprayRequest has extra='forbid' — servo_angle triggers 422."""
     resp = await client.post("/api/v1/spray/manual", json={
         "device_id": "device-001",
-        "servo_angle": 5,
+        "servo_angle": 90,
         "duration_ms": 1000,
-        "command_id": "test-cmd-api-2",
+        "command_id": "test-cmd-api-servo",
     })
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["success"] is False
-    assert data["error"]["code"] == "INVALID_SERVO_ANGLE"
+    assert resp.status_code == 422
 
 
 @pytest.mark.anyio
@@ -122,10 +120,10 @@ async def test_set_invalid_mode(client):
 @pytest.mark.anyio
 async def test_error_response_format(client):
     """Verify error responses match Section 12 format."""
+    # Send duration that passes Pydantic (le=10000) but exceeds controller max (3000ms)
     resp = await client.post("/api/v1/spray/manual", json={
         "device_id": "device-001",
-        "servo_angle": 5,
-        "duration_ms": 1000,
+        "duration_ms": 5000,
         "command_id": "test-cmd-format",
     })
     data = resp.json()

@@ -17,7 +17,6 @@ async def manual_spray(request: ManualSprayRequest):
     """
     result = hardware_controller.manual_spray(
         device_id=request.device_id,
-        servo_angle=request.servo_angle,
         duration_ms=request.duration_ms,
         command_id=request.command_id,
     )

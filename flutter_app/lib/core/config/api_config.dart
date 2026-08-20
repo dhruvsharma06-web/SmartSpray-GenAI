@@ -13,5 +13,6 @@ class ApiConfig {
   static const String devices = '/devices';
   static const String detections = '/detections';
   static const String spray = '/spray';
+  static const String ai = '/ai';
   static const String statistics = '/statistics';
 }

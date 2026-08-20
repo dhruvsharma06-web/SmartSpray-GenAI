@@ -1,14 +1,33 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/stat_card.dart';
 import '../../app/theme.dart';
+import '../../repositories/device_repository.dart';
+import '../../repositories/ai_repository.dart';
 
-class HomeScreen extends StatelessWidget {
+final deviceStatusProvider = FutureProvider((ref) {
+  return ref.read(deviceRepositoryProvider).getDeviceStatus('device-001');
+});
+final aiStatusProvider = FutureProvider((ref) {
+  return ref.read(aiRepositoryProvider).getAiStatus();
+});
+
+class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final devAsync = ref.watch(deviceStatusProvider);
+    final aiAsync = ref.watch(aiStatusProvider);
+
+    final devStatus = devAsync.value?['status'] ?? 'OFFLINE';
+    final pumpStatus = devAsync.value?['pump_status'] ?? 'OFF';
+    final aiStatusRaw = aiAsync.value?['data']?['ready'] == true ? 'READY' : 'UNAVAILABLE';
+
+    // We omit fabricating statistics. Wait for an endpoint or show unavailable.
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('SMARTSPRAY'),
@@ -23,14 +42,14 @@ class HomeScreen extends StatelessWidget {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            const Wrap(
+            Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                StatusBadge(label: 'Device', value: 'ONLINE', state: DeviceState.online),
-                StatusBadge(label: 'AI', value: 'READY', state: DeviceState.ready),
-                StatusBadge(label: 'ESP32', value: 'CONNECTED', state: DeviceState.connected),
-                StatusBadge(label: 'Pump', value: 'OFF', state: DeviceState.offline),
+                StatusBadge(label: 'Device', value: devStatus.toUpperCase(), state: devStatus == 'offline' ? DeviceState.offline : DeviceState.online),
+                StatusBadge(label: 'AI', value: aiStatusRaw, state: aiStatusRaw == 'READY' ? DeviceState.ready : DeviceState.offline),
+                StatusBadge(label: 'ESP32', value: devAsync.value?['esp32_connected'] == true ? 'CONNECTED' : 'DISCONNECTED', state: devAsync.value?['esp32_connected'] == true ? DeviceState.connected : DeviceState.offline),
+                StatusBadge(label: 'Pump', value: pumpStatus.toUpperCase(), state: pumpStatus == 'on' ? DeviceState.ready : DeviceState.offline),
               ],
             ),
             const SizedBox(height: 32),
@@ -41,11 +60,11 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(height: 16),
             const Row(
               children: [
-                Expanded(child: StatCard(label: 'Plants Scanned', value: '42')),
+                Expanded(child: StatCard(label: 'Plants Scanned', value: '--')),
                 SizedBox(width: 16),
-                Expanded(child: StatCard(label: 'Infected', value: '9')),
+                Expanded(child: StatCard(label: 'Infected', value: '--')),
                 SizedBox(width: 16),
-                Expanded(child: StatCard(label: 'Sprayed', value: '7')),
+                Expanded(child: StatCard(label: 'Sprayed', value: '--')),
               ],
             ),
             const SizedBox(height: 32),
@@ -58,9 +77,9 @@ class HomeScreen extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  const Text(
-                    'Operating Mode: ASSISTED',
-                    style: TextStyle(
+                  Text(
+                    'Operating Mode: ${devAsync.value?["mode"] ?? "ASSISTED"}',
+                    style: const TextStyle(
                       color: AppTheme.primaryDark,
                       fontWeight: FontWeight.bold,
                     ),

@@ -6,7 +6,7 @@
 // ============================================================
 
 // --- Firmware ---
-#define FIRMWARE_VERSION "0.1.0"
+#define FIRMWARE_VERSION "0.2.0"
 #define DEVICE_UID "smartspray-001"
 
 // --- Serial ---
@@ -15,14 +15,8 @@
 #define SERIAL_BUFFER_SIZE 64
 
 // --- Pin Definitions ---
-#define SERVO_PIN 13
 #define PUMP_PIN 12
 #define ESTOP_PIN 14  // Physical emergency stop button (active LOW, pull-up)
-
-// --- Servo Limits ---
-#define MIN_SERVO_ANGLE 20
-#define MAX_SERVO_ANGLE 160
-#define DEFAULT_SERVO_ANGLE 90
 
 // --- Pump Safety ---
 #define MAX_PUMP_DURATION_MS 3000

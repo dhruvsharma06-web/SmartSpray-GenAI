@@ -1,108 +1,77 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/config/api_config.dart';
+import '../../services/api_service.dart';
 
-class HistoryEvent {
-  final DateTime timestamp;
-  final String plant;
-  final String disease;
-  final int confidence;
-  final int severity;
-  final String sprayLevel;
-  final String mode;
-  final String status;
-  final String duration;
-
-  const HistoryEvent({
-    required this.timestamp,
-    required this.plant,
-    required this.disease,
-    required this.confidence,
-    required this.severity,
-    required this.sprayLevel,
-    required this.mode,
-    required this.status,
-    required this.duration,
-  });
-}
 
 enum HistoryFilter { all, sprayed, skipped, failed }
 
 class HistoryState {
-  final List<HistoryEvent> events;
+  final List<dynamic> events;
   final HistoryFilter filter;
+  final bool isLoading;
+  final String? error;
 
   const HistoryState({
-    required this.events,
+    this.events = const [],
     this.filter = HistoryFilter.all,
+    this.isLoading = false,
+    this.error,
   });
 
   HistoryState copyWith({
-    List<HistoryEvent>? events,
+    List<dynamic>? events,
     HistoryFilter? filter,
+    bool? isLoading,
+    String? error,
   }) {
     return HistoryState(
       events: events ?? this.events,
       filter: filter ?? this.filter,
+      isLoading: isLoading ?? this.isLoading,
+      error: error,
     );
   }
 
-  List<HistoryEvent> get filteredEvents {
+  List<dynamic> get filteredEvents {
     switch (filter) {
       case HistoryFilter.all:
         return events;
       case HistoryFilter.sprayed:
-        return events.where((e) => e.status.toLowerCase() == 'completed').toList();
+        return events.where((e) => e['status']?.toLowerCase() == 'completed').toList();
       case HistoryFilter.skipped:
-        return events.where((e) => e.status.toLowerCase() == 'skipped').toList();
+        return events.where((e) => e['status']?.toLowerCase() == 'skipped').toList();
       case HistoryFilter.failed:
-        return events.where((e) => e.status.toLowerCase() == 'failed' || e.status.toLowerCase() == 'stopped').toList();
+        return events.where((e) => e['status']?.toLowerCase() == 'failed' || e['status']?.toLowerCase() == 'error').toList();
     }
   }
 }
 
-class HistoryStateNotifier extends StateNotifier<HistoryState> {
-  HistoryStateNotifier() : super(HistoryState(events: _mockEvents));
+class HistoryStateNotifier extends Notifier<HistoryState> {
+  @override
+  HistoryState build() {
+    loadEvents();
+    return const HistoryState();
+  }
+
+  Future<void> loadEvents() async {
+    state = state.copyWith(isLoading: true);
+    try {
+      final res = await ref.read(apiServiceProvider).get('${ApiConfig.spray}/history');
+      if (res.data != null && res.data['data'] != null) {
+        state = state.copyWith(events: res.data['data'], isLoading: false, error: null);
+      } else {
+        state = state.copyWith(isLoading: false, error: "Invalid response");
+      }
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+    }
+  }
 
   void setFilter(HistoryFilter filter) {
     state = state.copyWith(filter: filter);
   }
-
-  static final List<HistoryEvent> _mockEvents = [
-    HistoryEvent(
-      timestamp: DateTime.now().subtract(const Duration(minutes: 10)),
-      plant: 'Tomato',
-      disease: 'Early Blight',
-      confidence: 94,
-      severity: 62,
-      sprayLevel: 'Moderate Spray',
-      mode: 'ASSISTED',
-      status: 'Completed',
-      duration: '1.2s',
-    ),
-    HistoryEvent(
-      timestamp: DateTime.now().subtract(const Duration(hours: 1)),
-      plant: 'Tomato',
-      disease: 'Healthy',
-      confidence: 99,
-      severity: 0,
-      sprayLevel: 'None',
-      mode: 'AUTO',
-      status: 'Skipped',
-      duration: '0s',
-    ),
-    HistoryEvent(
-      timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-      plant: 'Tomato',
-      disease: 'Late Blight',
-      confidence: 88,
-      severity: 85,
-      sprayLevel: 'Heavy Spray',
-      mode: 'ASSISTED',
-      status: 'Failed',
-      duration: '0s',
-    ),
-  ];
 }
 
-final historyStateProvider = StateNotifierProvider<HistoryStateNotifier, HistoryState>((ref) {
+final historyStateProvider = NotifierProvider<HistoryStateNotifier, HistoryState>(() {
   return HistoryStateNotifier();
 });

@@ -235,7 +235,13 @@ def deterministic_split(samples: list[Sample], seed: int = 42) -> dict[str, list
     targets = {"train": total * 0.70, "val": total * 0.15, "test": total * 0.15}
     result = {"train": [], "val": [], "test": []}
     for _, group_samples in ordered:
-        split = min(result, key=lambda name: (abs(len(result[name]) + len(group_samples) - targets[name]), len(result[name])))
+        split = min(
+            result,
+            key=lambda name: (
+                len(result[name]) / targets[name] if targets[name] else float("inf"),
+                len(result[name]),
+            ),
+        )
         result[split].extend(group_samples)
     return result
 

@@ -16,6 +16,9 @@ class HistoryScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('HISTORY'),
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: () => notifier.loadEvents())
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Container(
@@ -47,24 +50,34 @@ class HistoryScreen extends ConsumerWidget {
           ),
         ),
       ),
-      body: events.isEmpty
-          ? const Center(child: Text('No events found.'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16.0),
-              itemCount: events.length,
-              itemBuilder: (context, index) {
-                final event = events[index];
-                return _buildEventCard(context, event);
-              },
-            ),
+      body: state.isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : state.error != null
+              ? Center(child: Text("Error: ${state.error}"))
+              : events.isEmpty
+                  ? const Center(child: Text('No events found.'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16.0),
+                      itemCount: events.length,
+                      itemBuilder: (context, index) {
+                        final event = events[index];
+                        return _buildEventCard(context, event);
+                      },
+                    ),
     );
   }
 
-  Widget _buildEventCard(BuildContext context, HistoryEvent event) {
+  Widget _buildEventCard(BuildContext context, dynamic event) {
+    String status = (event['status'] ?? 'unknown').toString().toLowerCase();
     Color statusColor = AppTheme.secondaryText;
-    if (event.status.toLowerCase() == 'completed') statusColor = AppTheme.success;
-    if (event.status.toLowerCase() == 'failed' || event.status.toLowerCase() == 'stopped') statusColor = AppTheme.error;
-    if (event.status.toLowerCase() == 'skipped') statusColor = AppTheme.info;
+    if (status == 'completed') statusColor = AppTheme.success;
+    if (status == 'failed' || status == 'stopped' || status == 'error') statusColor = AppTheme.error;
+    if (status == 'skipped') statusColor = AppTheme.info;
+
+    DateTime? ts;
+    try {
+      ts = DateTime.parse(event['started_at'] ?? '');
+    } catch (_) { }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -77,7 +90,7 @@ class HistoryScreen extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  DateFormat('HH:mm - MMM d').format(event.timestamp),
+                  ts != null ? DateFormat('HH:mm - MMM d').format(ts) : 'Unknown Time',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 Container(
@@ -87,7 +100,7 @@ class HistoryScreen extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    event.status.toUpperCase(),
+                    status.toUpperCase(),
                     style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -97,26 +110,15 @@ class HistoryScreen extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(event.plant, style: const TextStyle(fontWeight: FontWeight.bold)),
-                Text('${event.disease} (${event.confidence}%)'),
+                Text(event['mode'] ?? 'Unknown mode', style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text('${event['duration_ms'] ?? 0} ms duration'),
               ],
             ),
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Severity: ${event.severity}%', style: TextStyle(color: event.severity > 50 ? AppTheme.moderate : AppTheme.text)),
-                Text(event.sprayLevel, style: const TextStyle(fontWeight: FontWeight.w600)),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Mode: ${event.mode}', style: Theme.of(context).textTheme.labelSmall),
-                Text('Duration: ${event.duration}', style: Theme.of(context).textTheme.labelSmall),
-              ],
-            ),
+            if (event['error_message'] != null)
+              Text('Error: ${event['error_message']}', style: const TextStyle(color: AppTheme.error)),
+            if (event['command_id'] != null)
+              Text('CMD ID: ${event['command_id']}', style: Theme.of(context).textTheme.labelSmall),
           ],
         ),
       ),

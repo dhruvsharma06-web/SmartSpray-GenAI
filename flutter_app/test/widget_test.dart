@@ -14,6 +14,6 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify that our home screen loads
-    expect(find.text('Home Screen'), findsOneWidget);
+    expect(find.text('SMARTSPRAY'), findsOneWidget);
   });
 }

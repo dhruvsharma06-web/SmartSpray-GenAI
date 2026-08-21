@@ -1,14 +1,74 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:camera/camera.dart';
 import 'detection_provider.dart';
 import '../../widgets/detection_visualizer.dart';
 import '../../app/theme.dart';
 
-class DetectionScreen extends ConsumerWidget {
+class DetectionScreen extends ConsumerStatefulWidget {
   const DetectionScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DetectionScreen> createState() => _DetectionScreenState();
+}
+
+class _DetectionScreenState extends ConsumerState<DetectionScreen> {
+  CameraController? _cameraController;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeCamera();
+  }
+
+  Future<void> _initializeCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isNotEmpty) {
+        final rearCamera = cameras.firstWhere(
+          (c) => c.lensDirection == CameraLensDirection.back,
+          orElse: () => cameras.first,
+        );
+        _cameraController = CameraController(
+          rearCamera,
+          ResolutionPreset.medium,
+          enableAudio: false,
+        );
+        await _cameraController!.initialize();
+        if (mounted) {
+          setState(() {});
+        }
+      }
+    } catch (e) {
+      debugPrint('Camera initialization error: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _cameraController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleStartScan() async {
+    final notifier = ref.read(detectionStateProvider.notifier);
+
+    if (_cameraController != null && _cameraController!.value.isInitialized) {
+      try {
+        final XFile file = await _cameraController!.takePicture();
+        notifier.startScan(imageFile: File(file.path));
+      } catch (e) {
+        debugPrint('Failed to capture image: $e');
+        notifier.startScan(); // fallback
+      }
+    } else {
+      notifier.startScan(); // fallback
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(detectionStateProvider);
     final notifier = ref.read(detectionStateProvider.notifier);
 
@@ -27,7 +87,10 @@ class DetectionScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            DetectionVisualizer(state: state),
+            DetectionVisualizer(
+              state: state,
+              cameraController: _cameraController,
+            ),
             const SizedBox(height: 24),
             _buildStatusPanel(state),
             const SizedBox(height: 24),
@@ -55,12 +118,12 @@ class DetectionScreen extends ConsumerWidget {
       );
     }
 
-    if (state.status == DetectionStatus.error || state.status == DetectionStatus.offline) {
+    if (state.status == DetectionStatus.error ||
+        state.status == DetectionStatus.offline) {
       return Center(
-        child: Text(
-          state.errorMessage ?? 'Error occurred.',
-          style: const TextStyle(color: AppTheme.error, fontWeight: FontWeight.bold)
-        ),
+        child: Text(state.errorMessage ?? 'Error occurred.',
+            style: const TextStyle(
+                color: AppTheme.error, fontWeight: FontWeight.bold)),
       );
     }
 
@@ -77,12 +140,13 @@ class DetectionScreen extends ConsumerWidget {
 
     if (isUncertain) {
       return Card(
-        color: AppTheme.warning,
-        child: const Padding(
-           padding: EdgeInsets.all(16),
-           child: Text('AI RESULT UNCERTAIN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        )
-      );
+          color: AppTheme.warning,
+          child: const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('AI RESULT UNCERTAIN',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
+          ));
     }
 
     return Card(
@@ -92,29 +156,40 @@ class DetectionScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (leaf != null && leaf['detected'] == true)
-              const _StatusRow(icon: Icons.spa, text: 'Leaf detected', color: Colors.blue),
-
+              const _StatusRow(
+                  icon: Icons.spa, text: 'Leaf detected', color: Colors.blue),
             const Divider(),
             if (disease != 'healthy') ...[
-              Text('Disease: ${disease.replaceAll("_", " ")}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              Text('Disease: ${disease.replaceAll("_", " ")}',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16)),
               if (lesion != null && lesion['confidence'] != null)
-                Text('Confidence: ${(lesion['confidence'] * 100).toStringAsFixed(1)}%'),
+                Text(
+                    'Confidence: ${(lesion['confidence'] * 100).toStringAsFixed(1)}%'),
             ] else ...[
-               const Text('Healthy Plant', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.success)),
+              const Text('Healthy Plant',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: AppTheme.success)),
             ],
-
             if (severity != null) ...[
               const Divider(),
-              Text('Severity: ${severity['percentage']?.toStringAsFixed(1) ?? '0'}%', style: const TextStyle(color: AppTheme.moderate, fontWeight: FontWeight.bold)),
-              Text('Severity Level: ${severity['level']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text(
+                  'Severity: ${severity['percentage']?.toStringAsFixed(1) ?? '0'}%',
+                  style: const TextStyle(
+                      color: AppTheme.moderate, fontWeight: FontWeight.bold)),
+              Text('Severity Level: ${severity['level']}',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
             ],
             const Divider(),
             Text(
               'Recommended: ${decision['recommendation']}',
               style: TextStyle(
-                color: decision['recommendation'] == 'NO_SPRAY' ? AppTheme.text : AppTheme.emergency,
-                fontWeight: FontWeight.bold
-              ),
+                  color: decision['recommendation'] == 'NO_SPRAY'
+                      ? AppTheme.text
+                      : AppTheme.emergency,
+                  fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -122,10 +197,11 @@ class DetectionScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildControls(BuildContext context, DetectionState state, DetectionStateNotifier notifier) {
+  Widget _buildControls(BuildContext context, DetectionState state,
+      DetectionStateNotifier notifier) {
     if (state.status == DetectionStatus.idle) {
       return ElevatedButton.icon(
-        onPressed: () => notifier.startScan(),
+        onPressed: _handleStartScan,
         icon: const Icon(Icons.document_scanner),
         label: const Text('START SCAN'),
       );
@@ -133,7 +209,9 @@ class DetectionScreen extends ConsumerWidget {
 
     if (state.status == DetectionStatus.resultReady) {
       final decision = state.aiResult?['decision'];
-      final canSpray = decision != null && decision['recommendation'] != 'NO_SPRAY' && decision['auto_permitted'] == true;
+      final canSpray = decision != null &&
+          decision['recommendation'] != 'NO_SPRAY' &&
+          decision['auto_permitted'] == true;
 
       return Row(
         children: [
@@ -180,7 +258,8 @@ class _StatusRow extends StatelessWidget {
   final String text;
   final Color color;
 
-  const _StatusRow({required this.icon, required this.text, required this.color});
+  const _StatusRow(
+      {required this.icon, required this.text, required this.color});
 
   @override
   Widget build(BuildContext context) {

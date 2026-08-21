@@ -1,15 +1,9 @@
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../repositories/ai_repository.dart';
 import '../../repositories/spray_repository.dart';
 
-enum DetectionStatus {
-  idle,
-  scanning,
-  resultReady,
-  spraying,
-  error,
-  offline
-}
+enum DetectionStatus { idle, scanning, resultReady, spraying, error, offline }
 
 class DetectionState {
   final DetectionStatus status;
@@ -39,17 +33,22 @@ class DetectionStateNotifier extends Notifier<DetectionState> {
   @override
   DetectionState build() => const DetectionState();
 
-  void startScan() async {
+  void startScan({File? imageFile}) async {
     state = state.copyWith(status: DetectionStatus.scanning);
     try {
-      final res = await ref.read(aiRepositoryProvider).detect();
+      final res =
+          await ref.read(aiRepositoryProvider).detect(imageFile: imageFile);
       if (res['success'] == true) {
-        state = state.copyWith(status: DetectionStatus.resultReady, aiResult: res);
+        state =
+            state.copyWith(status: DetectionStatus.resultReady, aiResult: res);
       } else {
-        state = state.copyWith(status: DetectionStatus.error, errorMessage: "Detection failed: ${res['error']}");
+        state = state.copyWith(
+            status: DetectionStatus.error,
+            errorMessage: "Detection failed: ${res['error']}");
       }
     } catch (e) {
-      state = state.copyWith(status: DetectionStatus.offline, errorMessage: "Backend API offline");
+      state = state.copyWith(
+          status: DetectionStatus.offline, errorMessage: "Backend API offline");
     }
   }
 
@@ -59,7 +58,9 @@ class DetectionStateNotifier extends Notifier<DetectionState> {
     // Auto-spray based on AI
     final decision = state.aiResult?['decision'];
     if (decision == null || decision['auto_permitted'] == false) {
-      state = state.copyWith(status: DetectionStatus.error, errorMessage: "Spray not permitted by AI constraints.");
+      state = state.copyWith(
+          status: DetectionStatus.error,
+          errorMessage: "Spray not permitted by AI constraints.");
       return;
     }
 
@@ -73,7 +74,8 @@ class DetectionStateNotifier extends Notifier<DetectionState> {
       await Future.delayed(const Duration(seconds: 2));
       state = const DetectionState(status: DetectionStatus.idle);
     } catch (e) {
-      state = state.copyWith(status: DetectionStatus.error, errorMessage: "Spray command failed.");
+      state = state.copyWith(
+          status: DetectionStatus.error, errorMessage: "Spray command failed.");
     }
   }
 
@@ -86,6 +88,7 @@ class DetectionStateNotifier extends Notifier<DetectionState> {
   }
 }
 
-final detectionStateProvider = NotifierProvider<DetectionStateNotifier, DetectionState>(() {
+final detectionStateProvider =
+    NotifierProvider<DetectionStateNotifier, DetectionState>(() {
   return DetectionStateNotifier();
 });

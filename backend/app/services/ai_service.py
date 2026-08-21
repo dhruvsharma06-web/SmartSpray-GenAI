@@ -31,6 +31,12 @@ class AIService:
         return self.leaf_loader.ready and self.lesion_loader.ready
 
     def get_status(self) -> dict:
+        if not self.is_ready():
+            try:
+                self.load_models()
+            except Exception:
+                pass
+
         return {
             "ready": self.is_ready(),
             "leaf_model": self.leaf_loader.ready,

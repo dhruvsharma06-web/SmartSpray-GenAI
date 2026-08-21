@@ -41,6 +41,7 @@ dependencies:
   flutter_secure_storage: ^11.0.0
   intl: ^0.20.3
   fl_chart: ^1.2.0
+  camera: ^0.12.0+2
 
 dev_dependencies:
   flutter_test:

@@ -1,6 +1,5 @@
 #include "communication.h"
 #include "config.h"
-#include "servo.h"
 #include "pump.h"
 #include "safety.h"
 #include <string.h>
@@ -8,8 +7,7 @@
 
 namespace SmartSpray {
 
-void CommandParser::init(ServoController* servo, PumpController* pump, SafetyManager* safety) {
-    _servo = servo;
+void CommandParser::init(PumpController* pump, SafetyManager* safety) {
     _pump = pump;
     _safety = safety;
     _bufferIndex = 0;
@@ -75,35 +73,15 @@ ParsedCommand CommandParser::parseCommand(const char* line) {
         return cmd;
     }
 
-    // SPRAY,<angle>,<duration> command
+    // SPRAY,<duration> command
     if (strncmp(line, "SPRAY,", 6) == 0) {
-        // Parse angle
-        const char* angleStr = line + 6;
-        char* commaPos = strchr(angleStr, ',');
-        if (commaPos == nullptr) {
-            cmd.type = CommandType::INVALID;
-            return cmd;
-        }
-
-        // Extract angle
-        char angleBuf[8];
-        int angleLen = commaPos - angleStr;
-        if (angleLen <= 0 || angleLen >= 8) {
-            cmd.type = CommandType::INVALID;
-            return cmd;
-        }
-        strncpy(angleBuf, angleStr, angleLen);
-        angleBuf[angleLen] = '\0';
-        cmd.servoAngle = atoi(angleBuf);
-
-        // Extract duration
-        const char* durationStr = commaPos + 1;
+        // Parse duration
+        const char* durationStr = line + 6;
         if (strlen(durationStr) == 0) {
             cmd.type = CommandType::INVALID;
             return cmd;
         }
         cmd.durationMs = atoi(durationStr);
-
         cmd.type = CommandType::SPRAY;
         return cmd;
     }
@@ -149,28 +127,12 @@ void CommandParser::executeCommand(const ParsedCommand& cmd) {
                 return;
             }
 
-            // Validate servo angle
-            if (!_servo->isValidAngle(cmd.servoAngle)) {
-                Serial.print("ACK,ERROR,INVALID_ANGLE,");
-                Serial.println(cmd.servoAngle);
-                return;
-            }
-
             // Validate pump duration
             if (!_pump->isValidDuration(cmd.durationMs)) {
                 Serial.print("ACK,ERROR,INVALID_DURATION,");
                 Serial.println(cmd.durationMs);
                 return;
             }
-
-            // Set servo angle
-            if (!_servo->setAngle(cmd.servoAngle)) {
-                Serial.println("ACK,ERROR,SERVO_FAIL");
-                return;
-            }
-
-            // Small delay for servo to reach position
-            delay(200);
 
             // Activate pump
             if (!_pump->activate(cmd.durationMs)) {
@@ -179,8 +141,6 @@ void CommandParser::executeCommand(const ParsedCommand& cmd) {
             }
 
             Serial.print("ACK,SPRAY_STARTED,");
-            Serial.print(cmd.servoAngle);
-            Serial.print(",");
             Serial.println(cmd.durationMs);
             return;
         }
@@ -199,8 +159,6 @@ void CommandParser::executeCommand(const ParsedCommand& cmd) {
 void CommandParser::sendStatus() {
     Serial.print("STATUS,");
     Serial.print(_safety->isEmergencyStopped() ? "ESTOP" : "OK");
-    Serial.print(",SERVO,");
-    Serial.print(_servo->getAngle());
     Serial.print(",PUMP,");
     Serial.print(_pump->isActive() ? "ON" : "OFF");
     Serial.print(",RUNTIME,");

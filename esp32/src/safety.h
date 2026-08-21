@@ -7,11 +7,10 @@ namespace SmartSpray {
 
 // Forward declarations
 class PumpController;
-class ServoController;
 
 class SafetyManager {
 public:
-    void init(PumpController* pump, ServoController* servo);
+    void init(PumpController* pump);
     void update();  // Call in loop()
 
     bool isEmergencyStopped() const;
@@ -24,7 +23,6 @@ public:
 
 private:
     PumpController* _pump = nullptr;
-    ServoController* _servo = nullptr;
 
     volatile bool _eStopped = false;
     unsigned long _lastCommandTime = 0;

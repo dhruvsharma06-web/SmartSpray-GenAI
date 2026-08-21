@@ -1,8 +1,8 @@
 """Hardware controller service — orchestrates validation and serial commands.
 
-Implements the full validation chain from Section 11:
+Implements the full validation chain:
   device exists → device online → correct mode → e-stop inactive →
-  servo valid → duration valid → not spraying → command not duplicate →
+  duration valid → not spraying → command not duplicate →
   command not stale → send to ESP32
 """
 
@@ -148,28 +148,26 @@ class HardwareController:
     def manual_spray(
         self,
         device_id: str,
-        servo_angle: int,
         duration_ms: int,
         command_id: Optional[str] = None,
     ) -> dict:
-        """Execute manual spray with full validation chain."""
+        """Execute manual spray with full validation chain (pump-only)."""
 
         # Generate command ID if not provided
         if not command_id:
             command_id = f"cmd-{uuid.uuid4().hex[:8]}"
 
         with self._state_lock:
-            return self._manual_spray_locked(device_id, servo_angle, duration_ms, command_id)
+            return self._manual_spray_locked(device_id, duration_ms, command_id)
 
     def _manual_spray_locked(
         self,
         device_id: str,
-        servo_angle: int,
         duration_ms: int,
         command_id: str,
     ) -> dict:
 
-        # --- Validation Chain (Section 11) ---
+        # --- Validation Chain ---
 
         with SyncSession() as session:
             connected = serial_manager.is_connected
@@ -209,16 +207,7 @@ class HardwareController:
                 session.commit()
                 return error_response("EMERGENCY_STOP_ACTIVE", "Emergency stop is active", command_id)
 
-            # 4. Servo angle validation
-            if servo_angle < settings.min_servo_angle or servo_angle > settings.max_servo_angle:
-                session.commit()
-                return error_response(
-                    "INVALID_SERVO_ANGLE",
-                    f"Servo angle must be {settings.min_servo_angle}-{settings.max_servo_angle}°, got {servo_angle}",
-                    command_id,
-                )
-
-            # 5. Duration validation
+            # 4. Duration validation
             if duration_ms < settings.min_pump_duration_ms or duration_ms > settings.max_pump_duration_ms:
                 session.commit()
                 return error_response(
@@ -227,7 +216,7 @@ class HardwareController:
                     command_id,
                 )
 
-            # 6. Persistent idempotency and active spray checks
+            # 5. Persistent idempotency and active spray checks
             existing = session.scalar(select(SprayEvent).where(SprayEvent.command_id == command_id))
             if existing:
                 session.commit()
@@ -240,7 +229,6 @@ class HardwareController:
             event = SprayEvent(
                 device_id=device.id,
                 mode=self._current_mode,
-                servo_angle=servo_angle,
                 duration_ms=duration_ms,
                 status=EVENT_PENDING,
                 command_id=command_id,
@@ -254,7 +242,7 @@ class HardwareController:
             event_id = event.id
 
         # --- Send to ESP32 ---
-        command = f"SPRAY,{servo_angle},{duration_ms}"
+        command = f"SPRAY,{duration_ms}"
         response = serial_manager.send_command(command)
 
         if response is None:
@@ -271,7 +259,6 @@ class HardwareController:
             return success_response({
                 "command_id": command_id,
                 "status": "spray_started",
-                "servo_angle": servo_angle,
                 "duration_ms": duration_ms,
                 "esp32_response": response,
             })
@@ -376,11 +363,10 @@ class HardwareController:
             "is_spraying": self._is_spraying,
             "is_emergency_stopped": self._is_emergency_stopped,
             "firmware_version": None,
-            "servo_angle": None,
             "pump_runtime_ms": None,
         }
 
-        # Parse STATUS response: STATUS,OK,SERVO,90,PUMP,OFF,RUNTIME,0,FW,0.1.0
+        # Parse STATUS response: STATUS,OK,PUMP,OFF,RUNTIME,0,FW,0.2.0
         if response and response.startswith("STATUS,"):
             parts = response.split(",")
             try:
@@ -388,9 +374,7 @@ class HardwareController:
                     status_data["is_emergency_stopped"] = True
                     self._is_emergency_stopped = True
                 for i, part in enumerate(parts):
-                    if part == "SERVO" and i + 1 < len(parts):
-                        status_data["servo_angle"] = int(parts[i + 1])
-                    elif part == "PUMP" and i + 1 < len(parts):
+                    if part == "PUMP" and i + 1 < len(parts):
                         status_data["is_spraying"] = parts[i + 1] == "ON"
                         self._is_spraying = parts[i + 1] == "ON"
                     elif part == "RUNTIME" and i + 1 < len(parts):
@@ -436,7 +420,6 @@ class HardwareController:
                     "id": event.id,
                     "device_id": uid,
                     "mode": event.mode,
-                    "servo_angle": event.servo_angle,
                     "duration_ms": event.duration_ms,
                     "status": event.status,
                     "command_id": event.command_id,

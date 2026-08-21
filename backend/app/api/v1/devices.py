@@ -10,7 +10,7 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 
 @router.get("/{device_id}/status")
 async def get_device_status(device_id: str):
-    """Get current device status including servo, pump, and safety state."""
+    """Get current device status including pump and safety state."""
     result = hardware_controller.get_status(device_id=device_id)
     return result
 

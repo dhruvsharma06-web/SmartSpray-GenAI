@@ -1,7 +1,6 @@
 #include "safety.h"
 #include "config.h"
 #include "pump.h"
-#include "servo.h"
 
 namespace SmartSpray {
 
@@ -14,9 +13,8 @@ void IRAM_ATTR SafetyManager::_estopISR() {
     }
 }
 
-void SafetyManager::init(PumpController* pump, ServoController* servo) {
+void SafetyManager::init(PumpController* pump) {
     _pump = pump;
-    _servo = servo;
     _eStopped = false;
     _instance = this;
 

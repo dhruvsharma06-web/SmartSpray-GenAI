@@ -21,6 +21,8 @@ class Detection(BaseModel):
     class_name: str
     confidence: float = Field(ge=0, le=1)
     bounding_box: BoundingBox
+    mask_polygons: list[list[float]] | None = None
+    mask_area_pixels: float | None = Field(default=None, ge=0)
 
 
 class DetectionResult(BaseModel):
@@ -70,3 +72,22 @@ class DetectionResult(BaseModel):
 
 # Kept as a narrow alias for callers that annotate arbitrary frame types.
 Frame = Any
+
+class ComponentResult(BaseModel):
+    detected: bool = False
+    class_name: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    bbox: BoundingBox | None = None
+    mask_area_pixels: float | None = None
+
+class SeverityResult(BaseModel):
+    percentage: float | None = None
+    level: str | None = None
+
+class DetectionPipelineResult(BaseModel):
+    leaf: ComponentResult | None = None
+    lesion: ComponentResult | None = None
+    disease: str | None = None
+    severity: SeverityResult | None = None
+    uncertain: bool = False
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -11,7 +11,6 @@ class DeviceStatusResponse(BaseModel):
     firmware_version: Optional[str] = None
     is_spraying: bool = False
     is_emergency_stopped: bool = False
-    servo_angle: Optional[int] = None
     pump_runtime_ms: Optional[int] = None
 
 

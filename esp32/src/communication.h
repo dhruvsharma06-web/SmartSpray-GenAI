@@ -6,7 +6,6 @@
 namespace SmartSpray {
 
 // Forward declarations
-class ServoController;
 class PumpController;
 class SafetyManager;
 
@@ -22,17 +21,15 @@ enum class CommandType {
 
 struct ParsedCommand {
     CommandType type = CommandType::UNKNOWN;
-    int servoAngle = 0;
     int durationMs = 0;
 };
 
 class CommandParser {
 public:
-    void init(ServoController* servo, PumpController* pump, SafetyManager* safety);
+    void init(PumpController* pump, SafetyManager* safety);
     void update();  // Call in loop() to check for serial data
 
 private:
-    ServoController* _servo = nullptr;
     PumpController* _pump = nullptr;
     SafetyManager* _safety = nullptr;
 

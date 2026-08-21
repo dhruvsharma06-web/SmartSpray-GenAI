@@ -116,14 +116,18 @@ class SerialManager:
             return None
 
     def _mock_response(self, command: str) -> str:
-        """Generate mock responses for testing. [MOCK MODE]"""
+        """Generate mock responses matching the real ESP32 protocol. [MOCK MODE]
+
+        Protocol: SPRAY,<duration_ms>
+        No servo participation — pump-only architecture.
+        """
         logger.info(f"[MOCK MODE] Command: {command}")
 
         if command == "STOP":
             return "ACK,STOPPED"
 
         if command == "STATUS":
-            return "STATUS,OK,SERVO,90,PUMP,OFF,RUNTIME,0,FW,0.1.0"
+            return "STATUS,OK,PUMP,OFF,RUNTIME,0,FW,0.2.0"
 
         if command == "ESTOP":
             return "ACK,ESTOP_ACTIVATED"
@@ -133,17 +137,14 @@ class SerialManager:
 
         if command.startswith("SPRAY,"):
             parts = command.split(",")
-            if len(parts) == 3:
+            if len(parts) == 2:
                 try:
-                    angle = int(parts[1])
-                    duration = int(parts[2])
+                    duration = int(parts[1])
 
-                    if angle < settings.min_servo_angle or angle > settings.max_servo_angle:
-                        return f"ACK,ERROR,INVALID_ANGLE,{angle}"
                     if duration < settings.min_pump_duration_ms or duration > settings.max_pump_duration_ms:
                         return f"ACK,ERROR,INVALID_DURATION,{duration}"
 
-                    return f"ACK,SPRAY_STARTED,{angle},{duration}"
+                    return f"ACK,SPRAY_STARTED,{duration}"
                 except ValueError:
                     return "ACK,ERROR,MALFORMED_COMMAND"
 

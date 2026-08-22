@@ -8,6 +8,7 @@ import 'package:dio/dio.dart';
 abstract class AiRepository {
   Future<Map<String, dynamic>> getAiStatus();
   Future<Map<String, dynamic>> detect({File? imageFile});
+  Future<Map<String, dynamic>> assist(File imageFile);
 }
 
 class AiRepositoryImpl implements AiRepository {
@@ -40,6 +41,17 @@ class AiRepositoryImpl implements AiRepository {
       return Map<String, dynamic>.from(inner);
     }
     return body; // error envelope: {success:false, error:{...}}
+  }
+
+  @override
+  Future<Map<String, dynamic>> assist(File imageFile) async {
+    final response = await _api.post(
+      '${ApiConfig.ai}/assist',
+      data: FormData.fromMap({
+        'file': await MultipartFile.fromFile(imageFile.path),
+      }),
+    );
+    return Map<String, dynamic>.from(response.data as Map);
   }
 }
 

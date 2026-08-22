@@ -93,8 +93,158 @@ class _DetectionScreenState extends ConsumerState<DetectionScreen> {
             ),
             const SizedBox(height: 24),
             _buildStatusPanel(state),
+            if (state.status == DetectionStatus.resultReady) ...[
+              const SizedBox(height: 16),
+              _buildGenAiPanel(state),
+            ],
             const SizedBox(height: 24),
             _buildControls(context, state, notifier),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGenAiPanel(DetectionState state) {
+    if (state.genAiStatus == GenAiStatus.loading) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(18),
+          child: Row(children: [
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
+            SizedBox(width: 14),
+            Text(
+              'AI ANALYZING...',
+              style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1),
+            ),
+          ]),
+        ),
+      );
+    }
+
+    if (state.genAiStatus != GenAiStatus.ready || state.genAiResult == null) {
+      return const Card(
+        color: AppTheme.primaryLight,
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Row(children: [
+            Icon(Icons.auto_awesome_outlined, color: AppTheme.secondaryText),
+            SizedBox(width: 12),
+            Expanded(child: Text('Generative AI analysis unavailable')),
+          ]),
+        ),
+      );
+    }
+
+    final result = state.genAiResult!;
+    final plant = Map<String, dynamic>.from(result['plant'] as Map? ?? {});
+    final disease = Map<String, dynamic>.from(result['disease'] as Map? ?? {});
+    final severity = Map<String, dynamic>.from(result['severity'] as Map? ?? {});
+    final treatment = Map<String, dynamic>.from(result['treatment'] as Map? ?? {});
+    final options = List<String>.from(treatment['options'] as List? ?? const []);
+    final warnings = List<String>.from(result['warnings'] as List? ?? const []);
+
+    String confidence(Map<String, dynamic> value) {
+      final valueConfidence = value['confidence'];
+      return valueConfidence is num
+          ? '${(valueConfidence * 100).toStringAsFixed(0)}% confidence'
+          : 'Confidence unavailable';
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppTheme.primaryDark, AppTheme.primary],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryDark.withValues(alpha: 0.22),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(children: [
+              Icon(Icons.auto_awesome, color: Colors.amber),
+              SizedBox(width: 10),
+              Text(
+                'GENERATIVE AI ANALYSIS',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                ),
+              ),
+            ]),
+            const SizedBox(height: 16),
+            _GenAiMetric(
+              label: 'PLANT',
+              value: '${plant['name'] ?? 'Unknown'}',
+              detail: confidence(plant),
+            ),
+            _GenAiMetric(
+              label: 'DISEASE',
+              value: '${disease['name'] ?? 'Unknown'}',
+              detail: confidence(disease),
+            ),
+            _GenAiMetric(
+              label: 'SEVERITY',
+              value:
+                  '${severity['percentage'] ?? '—'}% — ${(severity['level'] ?? 'UNKNOWN').toString().toUpperCase()}',
+              detail: 'Image-based advisory',
+            ),
+            _GenAiCopy(label: 'AI INSIGHT', text: '${result['ai_analysis'] ?? ''}'),
+            _GenAiCopy(
+              label: 'TREATMENT RECOMMENDATION',
+              text: '${treatment['recommendation'] ?? ''}',
+            ),
+            if (options.isNotEmpty) ...[
+              const Text(
+                'OPTIONS',
+                style: TextStyle(
+                  color: Color(0xFFB7E7BD),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                  letterSpacing: 1,
+                ),
+              ),
+              ...options.map(
+                (option) => Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('•  $option', style: const TextStyle(color: Colors.white)),
+                ),
+              ),
+            ],
+            if (warnings.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 19),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'WARNING\n${warnings.first}',
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
           ],
         ),
       ),
@@ -232,7 +382,7 @@ class _DetectionScreenState extends ConsumerState<DetectionScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.moderate,
               ),
-              child: const Text('SPRAY'),
+              child: const Text('CONFIRM SPRAY'),
             ),
           ),
         ],
@@ -272,6 +422,72 @@ class _StatusRow extends StatelessWidget {
           Text(text),
         ],
       ),
+    );
+  }
+}
+
+class _GenAiMetric extends StatelessWidget {
+  final String label;
+  final String value;
+  final String detail;
+
+  const _GenAiMetric({
+    required this.label,
+    required this.value,
+    required this.detail,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFFB7E7BD),
+            fontWeight: FontWeight.w800,
+            fontSize: 12,
+            letterSpacing: 1,
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 17,
+          ),
+        ),
+        Text(detail, style: const TextStyle(color: Color(0xFFD6F3D9), fontSize: 12)),
+      ]),
+    );
+  }
+}
+
+class _GenAiCopy extends StatelessWidget {
+  final String label;
+  final String text;
+
+  const _GenAiCopy({required this.label, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFFB7E7BD),
+            fontWeight: FontWeight.w800,
+            fontSize: 12,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(text, style: const TextStyle(color: Colors.white, height: 1.35)),
+      ]),
     );
   }
 }

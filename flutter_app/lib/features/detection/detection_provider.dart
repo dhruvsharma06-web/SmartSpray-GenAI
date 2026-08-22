@@ -1,29 +1,41 @@
 import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../repositories/ai_repository.dart';
 import '../../repositories/spray_repository.dart';
 
 enum DetectionStatus { idle, scanning, resultReady, spraying, error, offline }
 
+enum GenAiStatus { idle, loading, ready, unavailable }
+
 class DetectionState {
   final DetectionStatus status;
   final Map<String, dynamic>? aiResult;
+  final GenAiStatus genAiStatus;
+  final Map<String, dynamic>? genAiResult;
   final String? errorMessage;
 
   const DetectionState({
     this.status = DetectionStatus.idle,
     this.aiResult,
+    this.genAiStatus = GenAiStatus.idle,
+    this.genAiResult,
     this.errorMessage,
   });
 
   DetectionState copyWith({
     DetectionStatus? status,
     Map<String, dynamic>? aiResult,
+    GenAiStatus? genAiStatus,
+    Map<String, dynamic>? genAiResult,
     String? errorMessage,
   }) {
     return DetectionState(
       status: status ?? this.status,
       aiResult: aiResult ?? this.aiResult,
+      genAiStatus: genAiStatus ?? this.genAiStatus,
+      genAiResult: genAiResult ?? this.genAiResult,
       errorMessage: errorMessage,
     );
   }
@@ -34,58 +46,79 @@ class DetectionStateNotifier extends Notifier<DetectionState> {
   DetectionState build() => const DetectionState();
 
   void startScan({File? imageFile}) async {
-    state = state.copyWith(status: DetectionStatus.scanning);
+    state = const DetectionState(status: DetectionStatus.scanning);
     try {
-      final res =
+      final result =
           await ref.read(aiRepositoryProvider).detect(imageFile: imageFile);
-      if (res['success'] == true) {
-        state =
-            state.copyWith(status: DetectionStatus.resultReady, aiResult: res);
-      } else {
+      if (result['success'] != true) {
         state = state.copyWith(
-            status: DetectionStatus.error,
-            errorMessage: "Detection failed: ${res['error']}");
+          status: DetectionStatus.error,
+          errorMessage: 'Detection failed: ${result['error']}',
+        );
+        return;
       }
-    } catch (e) {
+
+      state = DetectionState(
+        status: DetectionStatus.resultReady,
+        aiResult: result,
+        genAiStatus:
+            imageFile == null ? GenAiStatus.unavailable : GenAiStatus.loading,
+      );
+      if (imageFile != null) await _requestGenAiAnalysis(imageFile);
+    } catch (_) {
       state = state.copyWith(
-          status: DetectionStatus.offline, errorMessage: "Backend API offline");
+        status: DetectionStatus.offline,
+        errorMessage: 'Backend API offline',
+      );
+    }
+  }
+
+  Future<void> _requestGenAiAnalysis(File imageFile) async {
+    try {
+      final result = await ref.read(aiRepositoryProvider).assist(imageFile);
+      if (result['success'] == true && result['data'] is Map) {
+        state = state.copyWith(
+          genAiStatus: GenAiStatus.ready,
+          genAiResult: Map<String, dynamic>.from(result['data'] as Map),
+        );
+      } else {
+        state = state.copyWith(genAiStatus: GenAiStatus.unavailable);
+      }
+    } catch (_) {
+      // This advisory request never alters detection or spray availability.
+      state = state.copyWith(genAiStatus: GenAiStatus.unavailable);
     }
   }
 
   void spray() async {
     if (state.status != DetectionStatus.resultReady) return;
 
-    // Auto-spray based on AI
+    // Only this user-initiated path may access the existing spray repository.
     final decision = state.aiResult?['decision'];
     if (decision == null || decision['auto_permitted'] == false) {
       state = state.copyWith(
-          status: DetectionStatus.error,
-          errorMessage: "Spray not permitted by AI constraints.");
+        status: DetectionStatus.error,
+        errorMessage: 'Spray not permitted by AI constraints.',
+      );
       return;
     }
 
     state = state.copyWith(status: DetectionStatus.spraying);
     try {
-      // Backend handles exact duration for recommendation levels, but we can pass a proxy or update endpoint
-      // Actually backend /api/v1/spray/manual takes duration_ms.
-      // If we are in ASSISTED mode, we shouldn't necessarily use manual spray, but the backend doesn't have an assisted spray endpoint!
-      // We will spray manually for 1000ms as a safe default demo!
       await ref.read(sprayRepositoryProvider).sprayManual('device-001', 1.0);
       await Future.delayed(const Duration(seconds: 2));
       state = const DetectionState(status: DetectionStatus.idle);
-    } catch (e) {
+    } catch (_) {
       state = state.copyWith(
-          status: DetectionStatus.error, errorMessage: "Spray command failed.");
+        status: DetectionStatus.error,
+        errorMessage: 'Spray command failed.',
+      );
     }
   }
 
-  void skip() {
-    state = const DetectionState(status: DetectionStatus.idle);
-  }
+  void skip() => state = const DetectionState(status: DetectionStatus.idle);
 
-  void reset() {
-    state = const DetectionState(status: DetectionStatus.idle);
-  }
+  void reset() => state = const DetectionState(status: DetectionStatus.idle);
 }
 
 final detectionStateProvider =

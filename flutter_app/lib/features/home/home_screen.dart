@@ -7,8 +7,11 @@ import '../../app/theme.dart';
 import '../../repositories/device_repository.dart';
 import '../../repositories/ai_repository.dart';
 
-final deviceStatusProvider = FutureProvider((ref) {
-  return ref.read(deviceRepositoryProvider).getDeviceStatus('device-001');
+final deviceStatusProvider = StreamProvider.autoDispose((ref) async* {
+  while (true) {
+    yield await ref.read(deviceRepositoryProvider).getDeviceStatus('device-001');
+    await Future.delayed(const Duration(seconds: 2));
+  }
 });
 final aiStatusProvider = FutureProvider((ref) {
   return ref.read(aiRepositoryProvider).getAiStatus();
@@ -22,8 +25,13 @@ class HomeScreen extends ConsumerWidget {
     final devAsync = ref.watch(deviceStatusProvider);
     final aiAsync = ref.watch(aiStatusProvider);
 
-    final devStatus = devAsync.value?['status'] ?? 'OFFLINE';
-    final pumpStatus = devAsync.value?['pump_status'] ?? 'OFF';
+    final deviceData = devAsync.value?['data'];
+    final deviceStatus = deviceData is Map
+      ? Map<String, dynamic>.from(deviceData)
+      : <String, dynamic>{};
+    final devStatus = deviceStatus['status']?.toString().toLowerCase() ?? 'offline';
+    final esp32Connected = deviceStatus['esp32_connected'] == true;
+    final pumpOn = deviceStatus['is_spraying'] == true;
     final aiStatusRaw = aiAsync.value?['data']?['ready'] == true ? 'READY' : 'UNAVAILABLE';
 
     // We omit fabricating statistics. Wait for an endpoint or show unavailable.
@@ -48,8 +56,8 @@ class HomeScreen extends ConsumerWidget {
               children: [
                 StatusBadge(label: 'Device', value: devStatus.toUpperCase(), state: devStatus == 'offline' ? DeviceState.offline : DeviceState.online),
                 StatusBadge(label: 'AI', value: aiStatusRaw, state: aiStatusRaw == 'READY' ? DeviceState.ready : DeviceState.offline),
-                StatusBadge(label: 'ESP32', value: devAsync.value?['esp32_connected'] == true ? 'CONNECTED' : 'DISCONNECTED', state: devAsync.value?['esp32_connected'] == true ? DeviceState.connected : DeviceState.offline),
-                StatusBadge(label: 'Pump', value: pumpStatus.toUpperCase(), state: pumpStatus == 'on' ? DeviceState.ready : DeviceState.offline),
+                StatusBadge(label: 'ESP32', value: esp32Connected ? 'CONNECTED' : 'DISCONNECTED', state: esp32Connected ? DeviceState.connected : DeviceState.offline),
+                StatusBadge(label: 'Pump', value: pumpOn ? 'ON' : 'OFF', state: pumpOn ? DeviceState.ready : DeviceState.offline),
               ],
             ),
             const SizedBox(height: 32),
@@ -78,7 +86,7 @@ class HomeScreen extends ConsumerWidget {
               child: Column(
                 children: [
                   Text(
-                    'Operating Mode: ${devAsync.value?["mode"] ?? "ASSISTED"}',
+                    'Operating Mode: ${deviceStatus["mode"] ?? "ASSISTED"}',
                     style: const TextStyle(
                       color: AppTheme.primaryDark,
                       fontWeight: FontWeight.bold,

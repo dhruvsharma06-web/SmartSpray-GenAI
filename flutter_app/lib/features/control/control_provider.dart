@@ -6,24 +6,26 @@ class ControlState {
   final double sprayDuration;
   final bool isSpraying;
   final bool isEmergencyStopped;
+  final String? errorMessage;
 
   const ControlState({
-
     this.sprayDuration = 1.0,
     this.isSpraying = false,
     this.isEmergencyStopped = false,
+    this.errorMessage,
   });
 
   ControlState copyWith({
     double? sprayDuration,
     bool? isSpraying,
     bool? isEmergencyStopped,
+    String? errorMessage,
   }) {
     return ControlState(
-
       sprayDuration: sprayDuration ?? this.sprayDuration,
       isSpraying: isSpraying ?? this.isSpraying,
       isEmergencyStopped: isEmergencyStopped ?? this.isEmergencyStopped,
+      errorMessage: errorMessage ?? this.errorMessage,
     );
   }
 }
@@ -40,12 +42,17 @@ class ControlStateNotifier extends Notifier<ControlState> {
 
   void startSpray() async {
     if (state.isEmergencyStopped || state.isSpraying) return;
-    state = state.copyWith(isSpraying: true);
+    state = ControlState(
+      sprayDuration: state.sprayDuration,
+      isSpraying: true,
+      isEmergencyStopped: state.isEmergencyStopped,
+    );
     try {
       await ref.read(sprayRepositoryProvider).sprayManual('device-001', state.sprayDuration);
       await Future.delayed(Duration(milliseconds: (state.sprayDuration * 1000).toInt()));
-    } catch (_) {
-      // Spray failure is reflected by not clearing isSpraying below
+    } catch (error) {
+      state = state.copyWith(isSpraying: false, errorMessage: error.toString());
+      return;
     }
 
     if (state.isSpraying) {
@@ -57,8 +64,8 @@ class ControlStateNotifier extends Notifier<ControlState> {
     state = state.copyWith(isSpraying: false);
     try {
       await ref.read(sprayRepositoryProvider).stopSpray('device-001');
-    } catch (_) {
-      // Best-effort stop; UI already reflects stopped state
+    } catch (error) {
+      state = state.copyWith(errorMessage: error.toString());
     }
   }
 
@@ -66,8 +73,8 @@ class ControlStateNotifier extends Notifier<ControlState> {
     state = state.copyWith(isSpraying: false, isEmergencyStopped: true);
     try {
       await ref.read(sprayRepositoryProvider).emergencyStop();
-    } catch (_) {
-      // Best-effort emergency stop; UI already reflects e-stop state
+    } catch (error) {
+      state = state.copyWith(errorMessage: error.toString());
     }
   }
 
@@ -75,8 +82,8 @@ class ControlStateNotifier extends Notifier<ControlState> {
     state = state.copyWith(isEmergencyStopped: false);
     try {
       await ref.read(sprayRepositoryProvider).resetEmergencyStop();
-    } catch (_) {
-      // Best-effort reset; UI already reflects reset state
+    } catch (error) {
+      state = state.copyWith(errorMessage: error.toString());
     }
   }
 

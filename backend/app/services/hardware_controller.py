@@ -343,6 +343,7 @@ class HardwareController:
             return success_response({
                 "device_uid": device_id,
                 "status": "offline",
+                "esp32_connected": False,
                 "mode": self._current_mode,
                 "is_spraying": False,
                 "is_emergency_stopped": self._is_emergency_stopped,
@@ -359,6 +360,7 @@ class HardwareController:
         status_data = {
             "device_uid": device_id,
             "status": "online",
+            "esp32_connected": True,
             "mode": self._current_mode,
             "is_spraying": self._is_spraying,
             "is_emergency_stopped": self._is_emergency_stopped,

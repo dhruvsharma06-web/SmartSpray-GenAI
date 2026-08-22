@@ -14,44 +14,47 @@ class SprayRepositoryImpl implements SprayRepository {
 
   SprayRepositoryImpl(this._api);
 
+  void _ensureSuccess(dynamic response) {
+    final data = response.data;
+    if (data is Map && data['success'] == false) {
+      final error = data['error'];
+      final code = error is Map ? error['code'] : null;
+      final message = error is Map ? error['message'] : null;
+      final details = [code, message]
+          .where((value) => value != null && value.toString().isNotEmpty)
+          .join(': ');
+      throw Exception(
+        details.isEmpty ? 'Spray request failed' : 'Spray request failed: $details',
+      );
+    }
+  }
+
   @override
   Future<void> sprayManual(String deviceId, double duration) async {
-    try {
-      await _api.post('${ApiConfig.spray}/manual', data: {
-        'device_id': deviceId,
-        'duration_ms': (duration * 1000).toInt(),
-        'command_id': DateTime.now().millisecondsSinceEpoch.toString(),
-      });
-    } catch (e) {
-      rethrow;
-    }
+    final response = await _api.post('${ApiConfig.spray}/manual', data: {
+      'device_id': deviceId,
+      'duration_ms': (duration * 1000).toInt(),
+      'command_id': DateTime.now().millisecondsSinceEpoch.toString(),
+    });
+    _ensureSuccess(response);
   }
 
   @override
   Future<void> stopSpray(String deviceId) async {
-    try {
-      await _api.post('${ApiConfig.spray}/stop', data: {'device_id': deviceId});
-    } catch (e) {
-      rethrow;
-    }
+    final response = await _api.post('${ApiConfig.spray}/stop', data: {'device_id': deviceId});
+    _ensureSuccess(response);
   }
 
   @override
   Future<void> emergencyStop() async {
-    try {
-      await _api.post('${ApiConfig.spray}/emergency-stop');
-    } catch (e) {
-      rethrow;
-    }
+    final response = await _api.post('${ApiConfig.spray}/emergency-stop');
+    _ensureSuccess(response);
   }
 
   @override
   Future<void> resetEmergencyStop() async {
-    try {
-      await _api.post('${ApiConfig.spray}/reset-emergency-stop');
-    } catch (e) {
-      rethrow;
-    }
+    final response = await _api.post('${ApiConfig.spray}/reset-emergency-stop');
+    _ensureSuccess(response);
   }
 }
 

@@ -64,6 +64,18 @@ class ControlScreen extends ConsumerWidget {
 
             const SizedBox(height: 24),
 
+            if (state.errorMessage != null)
+              Card(
+                color: AppTheme.error,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    state.errorMessage!,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+
 
 
             const SizedBox(height: 24),

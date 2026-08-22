@@ -6,6 +6,8 @@ pyserial>=3.5
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
 python-dotenv>=1.0.0
+python-multipart>=0.0.9
+google-genai>=1.0.0
 # Local AI runtime; imports are lazy so the backend remains testable without hardware.
 opencv-python>=4.8.0
 ultralytics>=8.3.0

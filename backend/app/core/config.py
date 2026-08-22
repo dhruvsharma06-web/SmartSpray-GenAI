@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     ai_camera_index: int = Field(default=0, ge=0)
     ai_device: str = Field(default="auto")
 
+    # Gemini GenAI (optional; the backend remains usable without these values)
+    gemini_api_key: str = Field(default="")
+    gemini_model: str = Field(default="gemini-2.5-flash")
+
     # Severity thresholds
     severity_mild_max: int = Field(default=25)
     severity_moderate_max: int = Field(default=60)

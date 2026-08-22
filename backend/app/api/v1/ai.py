@@ -10,6 +10,7 @@ from app.services.genai_service import GenAIConfigurationError, genai_service
 from app.schemas.common import success_response, error_response
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+logger = logging.getLogger(__name__)
 
 # Guard against concurrent webcam access — only one /detect request
 # may hold the camera at a time.

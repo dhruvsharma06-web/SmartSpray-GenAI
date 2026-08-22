@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     # Gemini GenAI (optional; the backend remains usable without these values)
     gemini_api_key: str = Field(default="")
-    gemini_model: str = Field(default="gemini-2.5-flash")
+    gemini_model: str = Field(default="gemini-3.6-flash")
 
     # Severity thresholds
     severity_mild_max: int = Field(default=25)

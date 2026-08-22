@@ -1,30 +1,9 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// ============================================================
-// SmartSpray ESP32 Configuration
-// ============================================================
-
-// --- Firmware ---
-#define FIRMWARE_VERSION "0.2.0"
-#define DEVICE_UID "smartspray-001"
-
-// --- Serial ---
 #define SERIAL_BAUD_RATE 115200
-#define COMMAND_TIMEOUT_MS 5000
-#define SERIAL_BUFFER_SIZE 64
 
-// --- Pin Definitions ---
-#define PUMP_PIN 12
-#define ESTOP_PIN 14  // Physical emergency stop button (active LOW, pull-up)
+// MOSFET gate control pin for the pump.
+#define PUMP_PIN 33
 
-// --- Pump Safety ---
-#define MAX_PUMP_DURATION_MS 3000
-#define MIN_PUMP_DURATION_MS 100
-
-// --- Timing ---
-#define LOOP_DELAY_MS 10
-#define STATUS_INTERVAL_MS 1000
-#define HEARTBEAT_TIMEOUT_MS 10000
-
-#endif // CONFIG_H
+#endif

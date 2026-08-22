@@ -74,8 +74,33 @@ class SerialManager:
             self._connected = False
             logger.info("Disconnected from ESP32")
 
+    def _drain_stale_input(self):
+        """Discard any queued serial data from prior commands before the next one."""
+        if self._connection is None or not self._connection.is_open:
+            return
+
+        while self._connection.in_waiting > 0:
+            try:
+                self._connection.readline()
+            except serial.SerialException:
+                break
+
+    def _is_expected_response(self, command: str, line: str) -> bool:
+        """Accept only the response that matches the command currently in flight."""
+        if command == "STATUS":
+            return line.startswith("STATUS,")
+        if command == "STOP":
+            return line.startswith("ACK,STOPPED")
+        if command == "ESTOP":
+            return line.startswith("ACK,ESTOP_ACTIVATED")
+        if command == "RESET_ESTOP":
+            return line.startswith("ACK,ESTOP_RESET")
+        if command.startswith("SPRAY,"):
+            return line.startswith("ACK,SPRAY_STARTED") or line.startswith("ACK,ERROR,")
+        return line.startswith("ACK,") or line.startswith("STATUS,")
+
     def send_command(self, command: str, timeout: float = 3.0) -> Optional[str]:
-        """Send a command and wait for ACK response.
+        """Send a command and wait for the matching ACK/STATUS response.
 
         Returns the response string or None on timeout/error.
         """
@@ -88,6 +113,8 @@ class SerialManager:
 
         try:
             with self._lock:
+                self._drain_stale_input()
+
                 # Send command with newline terminator
                 self._connection.write(f"{command}\n".encode("utf-8"))
                 self._connection.flush()
@@ -97,14 +124,23 @@ class SerialManager:
                 start = time.time()
                 while time.time() - start < timeout:
                     if self._connection.in_waiting > 0:
-                        line = self._connection.readline().decode("utf-8").strip()
-                        if line.startswith("ACK,") or line.startswith("STATUS,"):
-                            logger.debug(f"Received: {line}")
-                            return line
-                        # Skip INFO lines (boot messages, etc.)
-                        elif line.startswith("INFO,"):
+                        try:
+                            line = self._connection.readline().decode("utf-8").strip()
+                        except UnicodeDecodeError:
+                            line = ""
+
+                        if not line:
+                            continue
+
+                        if line.startswith("INFO,"):
                             logger.debug(f"Info: {line}")
                             continue
+
+                        if self._is_expected_response(command, line):
+                            logger.debug(f"Received: {line}")
+                            return line
+
+                        logger.debug(f"Ignoring stale serial line for '{command}': {line}")
                     time.sleep(0.01)
 
                 logger.warning(f"Timeout waiting for response to: {command}")

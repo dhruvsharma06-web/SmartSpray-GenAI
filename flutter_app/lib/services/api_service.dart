@@ -9,7 +9,7 @@ class ApiService {
       : _dio = Dio(BaseOptions(
           baseUrl: ApiConfig.baseUrl,
           connectTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 60),
         ));
 
   Future<Response> get(String path, {Map<String, dynamic>? queryParameters}) async {

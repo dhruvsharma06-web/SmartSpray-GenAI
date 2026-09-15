@@ -12,12 +12,7 @@ class MainScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          // const OfflineBanner(), // Uncomment when offline
-          Expanded(child: navigationShell),
-        ],
-      ),
+      body: navigationShell,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: navigationShell.currentIndex,
         onTap: (index) {
@@ -28,24 +23,24 @@ class MainScaffold extends StatelessWidget {
         },
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Home',
+            icon: Icon(Icons.dashboard_outlined),
+            activeIcon: Icon(Icons.dashboard),
+            label: 'Dashboard',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.document_scanner_outlined),
-            activeIcon: Icon(Icons.document_scanner),
-            label: 'Detect',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.gamepad_outlined),
-            activeIcon: Icon(Icons.gamepad),
-            label: 'Control',
+            icon: Icon(Icons.center_focus_strong_outlined),
+            activeIcon: Icon(Icons.center_focus_strong),
+            label: 'Scan',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.history_outlined),
             activeIcon: Icon(Icons.history),
             label: 'History',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.developer_board_outlined),
+            activeIcon: Icon(Icons.developer_board),
+            label: 'Device',
           ),
         ],
       ),
